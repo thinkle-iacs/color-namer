@@ -9,7 +9,13 @@
   }>();
 </script>
 
-<section>
+<section
+  style:--color="lab({color.lightness}
+  {color.a}
+  {color.b})"
+  style:--text={color.lightness < 50 ? "white" : "black"}
+  style:--shadow={color.lightness < 50 ? "0 0 8px black" : "0 0 8px white"}
+>
   <h2>The Big Reveal...</h2>
   <h1
     style:--color="lab({color.lightness}
@@ -32,6 +38,8 @@
             : "0 0 8px white"}
         >
           <span class="user-icon" style:color={userColor}></span>&nbsp;{name}
+          <span class="score"></span>
+          <!-- Add a 'score' based on distance -->
           <span class="details">
             <br />LAB: {color.lightness}
             {color.a}
@@ -42,14 +50,7 @@
         </div>
       {/each}
     </div>
-    <div
-      class="answer"
-      style:--color="lab({color.lightness}
-      {color.a}
-      {color.b})"
-      style:--text={color.lightness < 50 ? "white" : "black"}
-      style:--shadow={color.lightness < 50 ? "0 0 8px black" : "0 0 8px white"}
-    >
+    <div class="answer">
       The Target
       <span class="details">
         <!-- Show LAB value of the target -->
@@ -63,6 +64,7 @@
   <!-- Next up, draw a canvas with the LAB color space and the target cirlced in red,
    then the answers circled in the user colors... -->
   <canvas></canvas>
+  <button onclick={onComplete}>Play again?</button>
 </section>
 
 <style>
@@ -120,5 +122,15 @@
     height: 1em;
     border-radius: 50%;
     background-color: var(--color);
+  }
+  button {
+    background: var(--color);
+    color: var(--text);
+    text-shadow: var(--shadow);
+    font-size: 2em;
+    padding: 1em;
+    border-radius: 16px;
+    margin: 1em auto;
+    display: block;
   }
 </style>
