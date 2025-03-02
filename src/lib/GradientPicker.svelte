@@ -1,70 +1,182 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+
   let mode: "broad" | "narrow" = "broad";
   let color = null;
-  export let onselect: (lightness: number) => void;
+  export let onselect: (selectedColor: {
+    lightness: number;
+    a: number;
+    b: number;
+  }) => void;
 
   let lightness = 50;
   let lightnessSlider: HTMLDivElement;
+  let gradientCanvas: HTMLCanvasElement;
 
-  function updateLightnessFromEvent(e: MouseEvent | TouchEvent) {
+  function updateLightness(clientY: number) {
     if (!lightnessSlider) return;
     const rect = lightnessSlider.getBoundingClientRect();
-    let clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
     let offsetY = Math.max(0, Math.min(rect.height, clientY - rect.top));
-    lightness = (offsetY / rect.height) * 100;
+    lightness = Math.round(100 - (offsetY / rect.height) * 100); // Invert slider direction
+    drawLabGradient();
+  }
+
+  function startDragging(e: MouseEvent | TouchEvent) {
+    e.preventDefault();
+
+    function moveHandler(event: MouseEvent | TouchEvent) {
+      let clientY =
+        event instanceof MouseEvent ? event.clientY : event.touches[0].clientY;
+      updateLightness(clientY);
+    }
+
+    function stopDragging() {
+      window.removeEventListener("mousemove", moveHandler);
+      window.removeEventListener("mouseup", stopDragging);
+      window.removeEventListener("touchmove", moveHandler);
+      window.removeEventListener("touchend", stopDragging);
+    }
+
+    // Attach event listeners for dragging
+    window.addEventListener("mousemove", moveHandler);
+    window.addEventListener("mouseup", stopDragging);
+    window.addEventListener("touchmove", moveHandler, { passive: false });
+    window.addEventListener("touchend", stopDragging);
+
+    // Update lightness once on touch/click start
+    let clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
+    updateLightness(clientY);
   }
 
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === "ArrowUp") {
       e.preventDefault();
-      lightness = Math.max(0, lightness - 1);
+      lightness = Math.min(100, lightness + 1);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      lightness = Math.min(100, lightness + 1);
+      lightness = Math.max(0, lightness - 1);
     }
+    drawLabGradient();
   }
+
+  function handleClickOnGradient(event: MouseEvent) {
+    if (!gradientCanvas) return;
+    const rect = gradientCanvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const a = -128 + (x / rect.width) * 255;
+    const b = 127 - (y / rect.height) * 255;
+
+    const selectedColor = {
+      lightness,
+      a: Math.round(a),
+      b: Math.round(b),
+    };
+    onselect(selectedColor);
+  }
+
+  function drawLabGradient() {
+    if (!gradientCanvas) return;
+    const ctx = gradientCanvas.getContext("2d");
+    if (!ctx) return;
+
+    const width = gradientCanvas.width;
+    const height = gradientCanvas.height;
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const a = -128 + (x / width) * 255;
+        const b = 127 - (y / height) * 255;
+        const rgb = labToRgb(lightness, a, b);
+
+        const index = (y * width + x) * 4;
+        data[index] = rgb[0];
+        data[index + 1] = rgb[1];
+        data[index + 2] = rgb[2];
+        data[index + 3] = 255; // Alpha channel
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  function labToRgb(l: number, a: number, b: number) {
+    let y = (l + 16) / 116;
+    let x = a / 500 + y;
+    let z = y - b / 200;
+
+    x = 95.047 * (x ** 3 > 0.008856 ? x ** 3 : (x - 16 / 116) / 7.787);
+    y = 100.0 * (y ** 3 > 0.008856 ? y ** 3 : (y - 16 / 116) / 7.787);
+    z = 108.883 * (z ** 3 > 0.008856 ? z ** 3 : (z - 16 / 116) / 7.787);
+
+    x /= 100;
+    y /= 100;
+    z /= 100;
+    let red = x * 3.2406 + y * -1.5372 + z * -0.4986;
+    let green = x * -0.9689 + y * 1.8758 + z * 0.0415;
+    let blue = x * 0.0557 + y * -0.204 + z * 1.057;
+
+    red = red > 0.0031308 ? 1.055 * red ** (1 / 2.4) - 0.055 : 12.92 * red;
+    green =
+      green > 0.0031308 ? 1.055 * green ** (1 / 2.4) - 0.055 : 12.92 * green;
+    blue = blue > 0.0031308 ? 1.055 * blue ** (1 / 2.4) - 0.055 : 12.92 * blue;
+
+    return [
+      Math.max(0, Math.min(255, Math.round(red * 255))),
+      Math.max(0, Math.min(255, Math.round(green * 255))),
+      Math.max(0, Math.min(255, Math.round(blue * 255))),
+    ];
+  }
+
+  onMount(() => {
+    drawLabGradient();
+  });
 </script>
 
 <div class="lab-selector">
+  <!-- Lightness Slider -->
   <div
     class="lightness-slider"
     bind:this={lightnessSlider}
     aria-roledescription="slider"
-    onmousedown={(e) => updateLightnessFromEvent(e)}
-    ontouchstart={(e) => updateLightnessFromEvent(e)}
-    ontouchmove={(e) => updateLightnessFromEvent(e)}
+    onmousedown={startDragging}
+    ontouchstart={startDragging}
   >
     <div
       class="slider-thumb"
       tabindex="0"
       onkeydown={handleKeyDown}
-      style="top: calc({lightness}% - 2px);"
+      style="top: calc({100 - lightness}% - 2px);"
     ></div>
   </div>
-  <div class="gradient-box" style:--lightness="{lightness}%">
-    <!-- Your 2D Lab a/b gradient goes here -->
-  </div>
+
+  <!-- Lab a/b Gradient Box (Using Canvas) -->
+  <canvas
+    bind:this={gradientCanvas}
+    width="500"
+    height="500"
+    onclick={handleClickOnGradient}
+  ></canvas>
 </div>
 
 <style>
-  .gradient-box {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient();
-  }
   .lab-selector {
     width: 100%;
     height: 100%;
     display: grid;
     grid-template-columns: 32px auto;
   }
+
   .lightness-slider {
     position: relative;
     height: 100%;
     width: 32px;
-    background: linear-gradient(to bottom, black, white);
+    background: linear-gradient(to top, black, white);
     user-select: none;
   }
+
   .slider-thumb {
     position: absolute;
     left: 0;
@@ -73,5 +185,11 @@
     background: rgb(133, 133, 133);
     border: 1px solid white;
     cursor: pointer;
+  }
+
+  canvas {
+    width: 100%;
+    height: 600px;
+    display: block;
   }
 </style>
