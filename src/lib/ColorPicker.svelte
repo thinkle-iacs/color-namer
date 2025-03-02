@@ -1,23 +1,29 @@
 <script lang="ts">
   import GradientPicker from "./GradientPicker.svelte";
+  import type { Color } from "./types";
 
   let mode: "broad" | "narrow" = $state("broad");
-  let color: { lightness: number; a: number; b: number } | null = $state(null);
+  let color: Color | null = $state(null);
   let { onconfirm } = $props();
 
   // Define the variation range for LAB values
-  let baseRanges = [-4, -3, -2, -1, 0, 1, 2, 3, 4];
-  let multiplier = $state(18);
+  let baseRanges = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
+  const multiplierDesc = {
+    10: "Broad",
+    6: "Medium",
+    3: "Narrow",
+    1: "Final",
+  };
+
+  const multiplierNumStrings = Object.keys(multiplierDesc);
+  const multiplierNums: number[] = multiplierNumStrings.map((n) =>
+    parseInt(n, 10)
+  );
+  multiplierNums.sort((a, b) => a - b);
+
+  let multiplier = $state(multiplierNums[multiplierNums.length - 1]);
   let ranges = $derived(baseRanges.map((i) => i * multiplier));
 
-  // Derived values for the LAB grid
-  let lightnessValues = $derived(
-    color ? ranges.toReversed().map((r) => color!.lightness + r) : []
-  );
-  let aValues = $derived(color ? ranges.map((r) => color!.a + r) : []);
-  let bValues = $derived(color ? ranges.map((r) => color!.b + r) : []);
-
-  $effect(() => console.log(color, aValues, bValues, lightnessValues));
   let tableLightness = $state(50);
   $effect(() => {
     if (color) {
@@ -25,34 +31,51 @@
     }
   });
 
-  const multiplierDesc = {
-    18: "Broad",
-    8: "Medium",
-    3: "Narrow",
-    1: "Final",
-  };
-
-  function chooseTableColor(l, a, b) {
-    let multiplierNumStrings = Object.keys(multiplierDesc);
-    let multiplierNums: number[] = multiplierNumStrings.map((n) =>
-      parseInt(n, 10)
-    );
-    multiplierNums.sort((a, b) => a - b);
-    console.log("multiplier nums", multiplierNums);
+  // Derived values for the LAB grid
+  let lightnessValues = $derived(
+    color
+      ? ranges
+          .toReversed()
+          .map((r) => Math.max(0, Math.min(color!.lightness + r, 100)))
+          .filter((v, i, a) => a.indexOf(v) === i)
+      : []
+  );
+  let aValues = $derived(color ? ranges.map((r) => color!.a + r) : []);
+  let bValues = $derived(color ? ranges.map((r) => color!.b + r) : []);
+  $inspect(color, aValues, bValues, lightnessValues);
+  function chooseTableColor(l: number, a: number, b: number) {
     color = { lightness: l, a, b };
     let multiplierIndex = multiplierNums.indexOf(multiplier);
     if (multiplierIndex == 0) {
+      console.log("at last multiplier");
       onconfirm(color);
-    } else {
+    } else if (multiplierIndex > 0) {
+      console.log("move down one multiplier...");
+      console.log("setting multiplier to ", multiplier, "@", multiplierIndex);
       multiplier = multiplierNums[multiplierIndex - 1];
+    } else {
+      console.log("Weird multiplier value?", multiplier);
+      multiplier = multiplierNums[0];
+      console.log("=>", multiplier);
     }
   }
-  $effect(() => {
-    console.log("Multiplier is ", multiplier);
-    console.log("range is ", ranges);
-    console.log("avalues are ", aValues);
-    console.log("lightness vals are ", lightnessValues);
-  });
+  $inspect(
+    "Multiplier is ",
+    multiplier,
+    "range is ",
+    ranges,
+    "avalues are ",
+    aValues,
+    "lightness vals are ",
+    lightnessValues
+  );
+
+  function reset() {
+    mode = "broad";
+    multiplier = multiplierNums[multiplierNums.length - 1];
+    color = null;
+    tableLightness = 50;
+  }
 </script>
 
 <div class="color-picker">
@@ -84,7 +107,7 @@
       {color.b}
     </div>
     <div class="row">
-      <button onclick={() => (mode = "broad")}>Back</button>
+      <button onclick={reset}>Back</button>
       <button
         onclick={() => {
           onconfirm(color);
@@ -111,6 +134,9 @@
         </tbody>
       </table>
       <table>
+        <thead>
+          <tr><th colspan={aValues.length}>Hue</th></tr>
+        </thead>
         <tbody>
           {#each aValues as a}
             <tr>
@@ -144,6 +170,11 @@
     width: 100%;
     height: 100%;
   }
+  th {
+    text-align: center;
+    font-family: Inter, sans-serif;
+    width: 100%;
+  }
 
   .row {
     display: flex;
@@ -160,17 +191,17 @@
 
   td div,
   td button {
-    width: 32px;
-    height: 32px;
+    width: 42px;
+    height: 42px;
     cursor: pointer;
-    border: 1px solid transparent;
+    border: 6px solid white;
   }
 
-  td div:hover {
-    border: 1px solid black;
+  td button:hover {
+    border: 6px solid black;
   }
-  .selected {
-    border: 2px solid black;
+  td button.selected {
+    border: 6px solid black;
   }
   .centered {
     font-weight: bold;
