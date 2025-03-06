@@ -71,7 +71,7 @@
   </div>
   <AnswerGraph {guesses} {color}></AnswerGraph>
 
-  <button onclick={onComplete}>Play again?</button>
+  <button onclick={onComplete}>Next round</button>
 </section>
 
 <style>

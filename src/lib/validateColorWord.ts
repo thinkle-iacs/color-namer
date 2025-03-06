@@ -6,7 +6,6 @@ const directColorWords = [
   "white",
   "purple",
   "orange",
-  "white",
   "green",
   "blue",
   "yellow",
@@ -21,6 +20,24 @@ const directColorWords = [
   "teal",
   "maroon",
   "navy",
+  "azure",
+  "chartreuse",
+  "crimson",
+  "fuchsia",
+  "indigo",
+  "ivory",
+  "lavender",
+  "mauve",
+  "ochre",
+  "peach",
+  "periwinkle",
+  "salmon",
+  "sapphire",
+  "scarlet",
+  "turquoise",
+  "vermilion",
+  "violet",
+  "viridian",
 ];
 
 const shadeWords = [
@@ -45,5 +62,10 @@ export function isInvalid(word: string): string | undefined {
     return "No simple shading words / comparisons allowed";
   } else if (word.length > 64) {
     return "No more than 64 characters in your color name!";
+  }
+  for (let w of directColorWords) {
+    if (word.includes(w)) {
+      return "No direct color words allowed!";
+    }
   }
 }

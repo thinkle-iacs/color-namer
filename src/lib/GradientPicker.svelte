@@ -2,15 +2,23 @@
   import { onMount } from "svelte";
   import { labToRgb } from "./labToRgb";
 
-  let mode: "broad" | "narrow" = "broad";
-  let color = null;
-  export let onselect: (selectedColor: {
-    lightness: number;
-    a: number;
-    b: number;
-  }) => void;
+  // ✅ Svelte 5 props
+  const {
+    center = { lightness: 50, a: 0, b: 0 },
+    zoom = 1,
+    height = 600,
+    onselect,
+  } = $props<{
+    center: { lightness: number; a: number; b: number };
+    zoom: number; // 1 = Full space, 2 = Half space, 8 = 1/8th space, etc.
+    onselect: (selectedColor: {
+      lightness: number;
+      a: number;
+      b: number;
+    }) => void;
+  }>();
 
-  let lightness = 50;
+  let lightness = $state(center.lightness);
   let lightnessSlider: HTMLDivElement;
   let gradientCanvas: HTMLCanvasElement;
 
@@ -38,26 +46,13 @@
       window.removeEventListener("touchend", stopDragging);
     }
 
-    // Attach event listeners for dragging
     window.addEventListener("mousemove", moveHandler);
     window.addEventListener("mouseup", stopDragging);
     window.addEventListener("touchmove", moveHandler, { passive: false });
     window.addEventListener("touchend", stopDragging);
 
-    // Update lightness once on touch/click start
     let clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
     updateLightness(clientY);
-  }
-
-  function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      lightness = Math.min(100, lightness + 1);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      lightness = Math.max(0, lightness - 1);
-    }
-    drawLabGradient();
   }
 
   function handleClickOnGradient(event: MouseEvent) {
@@ -65,14 +60,13 @@
     const rect = gradientCanvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const a = -128 + (x / rect.width) * 255;
-    const b = 127 - (y / rect.height) * 255;
 
-    const selectedColor = {
-      lightness,
-      a: Math.round(a),
-      b: Math.round(b),
-    };
+    // ✅ New absolute zoom calculation
+    const range = 128 / zoom;
+    const a = center.a - range + (x / rect.width) * (range * 2);
+    const b = center.b + range - (y / rect.height) * (range * 2);
+
+    const selectedColor = { lightness, a: Math.round(a), b: Math.round(b) };
     onselect(selectedColor);
   }
 
@@ -86,17 +80,20 @@
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
 
+    // ✅ Define LAB range proportionally based on zoom level
+    const range = 128 / zoom;
+
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const a = -128 + (x / width) * 255;
-        const b = 127 - (y / height) * 255;
+        const a = center.a - range + (x / width) * (range * 2);
+        const b = center.b + range - (y / height) * (range * 2);
         const rgb = labToRgb(lightness, a, b);
 
         const index = (y * width + x) * 4;
         data[index] = rgb[0];
         data[index + 1] = rgb[1];
         data[index + 2] = rgb[2];
-        data[index + 3] = 255; // Alpha channel
+        data[index + 3] = 255;
       }
     }
 
@@ -108,7 +105,9 @@
   });
 </script>
 
-<div class="lab-selector">
+<!-- ✅ Now zoom and center affect the LAB display dynamically -->
+<h2>Zoom level: {zoom}</h2>
+<div class="lab-selector" style:--height="{height}px">
   <!-- Lightness Slider -->
   <div
     class="lightness-slider"
@@ -120,12 +119,21 @@
     <div
       class="slider-thumb"
       tabindex="0"
-      onkeydown={handleKeyDown}
+      onkeydown={(e) => {
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          lightness = Math.min(100, lightness + 1);
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          lightness = Math.max(0, lightness - 1);
+        }
+        drawLabGradient();
+      }}
       style="top: calc({100 - lightness}% - 2px);"
     ></div>
   </div>
 
-  <!-- Lab a/b Gradient Box (Using Canvas) -->
+  <!-- Lab a/b Gradient Box (Canvas) -->
   <canvas
     bind:this={gradientCanvas}
     width="500"
@@ -144,7 +152,8 @@
 
   .lightness-slider {
     position: relative;
-    height: 100%;
+    height: var(--height);
+    box-sizing: border-box;
     width: 32px;
     background: linear-gradient(to top, black, white);
     user-select: none;
@@ -161,8 +170,8 @@
   }
 
   canvas {
-    width: 100%;
-    height: 600px;
+    width: var(--height);
+    height: var(--height);
     display: block;
   }
 </style>

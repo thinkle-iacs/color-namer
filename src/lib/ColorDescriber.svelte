@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { labToRgb } from "./labToRgb";
   import type { Color } from "./types";
   import { isInvalid } from "./validateColorWord";
 
@@ -15,38 +16,47 @@
     a: -color.a, // Flip A value
     b: -color.b, // Flip B value
   });
+  let rgb = $derived(labToRgb(color.lightness, color.a, color.b));
 </script>
 
-<div
-  style:--color="lab({color.lightness}
-  {color.a}
-  {color.b})"
-  style:--text={color.lightness < 50 ? "white" : "black"}
-  style:--shadow={color.lightness < 50 ? "0 0 8px black" : "0 0 8px white"}
->
+<section>
   <h1>{description || "Name that Color!"}</h1>
   <label>
     <b>Name the color in fewer than 64 characters:</b>
     <input bind:value={description} type="text" />
-    <p class="directions">No direct color words allowed: be creative!</p>
     {#if invalidMessage}
       <p><b>{invalidMessage}</b></p>
+    {:else}
+      <p><b>&nbsp;</b></p>
     {/if}
   </label>
-
-  <button
-    disabled={invalidMessage || description.length === 0}
-    class:hidden={invalidMessage || description.length === 0}
-    style:--complementary-color="lab({complementaryColor.lightness}
-    {complementaryColor.a}
-    {complementaryColor.b})"
-    on:click={() => {
-      ondescribe(description);
-    }}
-  >
-    Submit
-  </button>
-</div>
+  <div class="swatch-container">
+    <div
+      class="swatch"
+      style:--color="rgb({rgb[0]}, {rgb[1]}, {rgb[2]})"
+      style:--text={color.lightness < 50 ? "white" : "black"}
+      style:--shadow={color.lightness < 50 ? "0 0 8px black" : "0 0 8px white"}
+    >
+      {#if description}
+        <h1>
+          &ldquo;{description}&rdquo;
+        </h1>
+      {/if}
+      <div>RGB: {rgb[0]}, {rgb[1]}, {rgb[2]}</div>
+      <div>LAB: {color.lightness}, {color.a}, {color.b}</div>
+    </div>
+  </div>
+  <div style="margin-top:1em;text-align:center;">
+    <button
+      disabled={!!invalidMessage || description.length === 0}
+      on:click={() => {
+        ondescribe(description);
+      }}
+    >
+      Submit
+    </button>
+  </div>
+</section>
 
 <style>
   button.hidden {
@@ -55,7 +65,11 @@
   button {
     opacity: 1;
   }
-  div {
+  button[disabled] {
+    opacity: 0.5;
+    filter: blur(2px);
+  }
+  section {
     display: grid;
     place-content: center;
     width: 100vw;
@@ -64,6 +78,17 @@
     z-index: 2;
     top: 0;
     left: 0;
+    background: black;
+    color: white;
+  }
+
+  .swatch-container {
+    display: grid;
+    place-content: center;
+    padding: 3em;
+    background: linear-gradient(to bottom right, black, white);
+  }
+  .swatch {
     background-color: var(--color);
     color: var(--text);
     text-shadow: var(--shadow);
@@ -79,6 +104,11 @@
       "Open Sans",
       "Helvetica Neue",
       sans-serif;
+    min-width: 80px;
+    min-height: 80px;
+    padding: 16px;
+    border-radius: 16px;
+    place-content: center;
   }
 
   input {

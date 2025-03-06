@@ -1,15 +1,17 @@
 <script lang="ts">
+  import PlayerNamer from "./PlayerNamer.svelte";
+
   import AnswerRevealer from "$lib/AnswerRevealer.svelte";
   import ColorDescriber from "$lib/ColorDescriber.svelte";
   import ColorPicker from "$lib/ColorPicker.svelte";
   import type { Color } from "$lib/types";
+  import { labToRgb, rgbToLab } from "./labToRgb";
+  import { updated } from "$app/state";
 
   let numPlayers: number | null = null;
-  let currentPlayerIndex = 0;
-  let currentPickerIndex = 0; // Track whose turn it is to pick
   let players: { name: string; color: string; guess: Color | null }[] = [];
-
-  let theGuess: Color | null = null;
+  // activeGuessIndex tracks the current guesser (players[0] is always the cluer)
+  let activeGuessIndex = 1;
   let theColor: Color | null = null;
   let theClue: string = "";
 
@@ -32,37 +34,50 @@
       color,
       guess: null,
     }));
-    currentPickerIndex = 0; // First player picks
+    activeGuessIndex = 1; // first guesser after the cluer
     resetColor();
   }
 
   function resetColor() {
     if (numPlayers === null) return;
 
-    let lightness = Math.round(Math.random() * 100);
-    let a = Math.round(Math.random() * 256) - 128;
-    let b = Math.round(Math.random() * 256) - 128;
+    // Generate a random color
+    let r = Math.floor(Math.random() * 256);
+    let g = Math.floor(Math.random() * 256);
+    let blue = Math.floor(Math.random() * 256);
+    const [lightness, a, b] = rgbToLab(r, g, blue);
     theColor = { lightness, a, b };
+
     theClue = "";
-    theGuess = null;
-    currentPlayerIndex = 0;
-    players.forEach((p) => (p.guess = null));
+    // Reset all guesses
+    players = players.map((p) => ({ ...p, guess: null }));
   }
 
   function submitGuess(guess: Color) {
-    players[currentPlayerIndex].guess = guess;
-    if (currentPlayerIndex < players.length - 1) {
-      currentPlayerIndex++;
-    } else {
-      theGuess = guess; // All players guessed, reveal the answer
-    }
+    // Record the guess for the current guesser
+    players[activeGuessIndex].guess = guess;
+    // Force reactivity
+    players = [...players];
+    activeGuessIndex++;
+  }
+
+  // Check if all guessers have guessed (i.e. activeGuessIndex is out of bounds)
+  function roundOver() {
+    return activeGuessIndex >= players.length;
   }
 
   function nextRound() {
-    // Rotate the picker role
-    currentPickerIndex = (currentPickerIndex + 1) % players.length;
+    // Rotate the players list: the cluer moves to the end,
+    // so a new cluer is at players[0].
+    players.push(players.shift()!);
+    // Reassign to trigger reactivity.
+    players = [...players];
+    activeGuessIndex = 1; // reset the guesser index
     resetColor();
   }
+
+  let needNames = true;
+  let delay = true;
 </script>
 
 <h1>Color Namer</h1>
@@ -74,6 +89,20 @@
       <button on:click={() => startGame(p)}>{p} Players</button>
     {/each}
   </div>
+{:else if needNames}
+  <PlayerNamer
+    onUpdate={(updatedPlayers) => {
+      players = updatedPlayers;
+      needNames = false;
+    }}
+    {players}
+  />
+{:else if delay}
+  <div class="fs-center">
+    <p>Ok... {players[0].name} will go first</p>
+    <p>Move the other players away from the screen</p>
+    <button on:click={() => (delay = false)}>Go</button>
+  </div>
 {:else}
   {#if !theClue}
     <button id="new-color-button" on:click={resetColor}>New Color</button>
@@ -81,19 +110,22 @@
 
   {#if !theClue && theColor}
     <h2 class="on-top">
-      {players[currentPickerIndex].name} is picking the color...
+      {players[0].name} is picking the color...
     </h2>
-    <ColorDescriber color={theColor} ondescribe={(clue) => (theClue = clue)} />
+    <ColorDescriber
+      color={theColor}
+      ondescribe={(clue) => {
+        theClue = clue;
+      }}
+    />
   {:else}
     <div>
-      {#if !theGuess}
+      {#if !roundOver()}
         <p>Pick the color named:</p>
         <h1>&ldquo;{theClue}&rdquo;</h1>
+        <h2>{players[activeGuessIndex].name}'s Turn</h2>
 
-        <h2>{players[currentPlayerIndex].name}'s Turn</h2>
-
-        <!-- 🔥 FORCE RESET: Wrap ColorPicker in {#key} to reset per team -->
-        {#key players[currentPlayerIndex].name}
+        {#key players[activeGuessIndex].name}
           <ColorPicker onconfirm={(c) => submitGuess(c)} />
         {/key}
 
@@ -108,7 +140,7 @@
       {:else}
         <AnswerRevealer
           color={theColor!}
-          guesses={players.map((p) => ({
+          guesses={players.slice(1).map((p) => ({
             name: p.name,
             color: p.guess!,
             userColor: p.color,
@@ -164,6 +196,7 @@
   li {
     font-size: 1.5rem;
   }
+
   h2.on-top {
     position: fixed;
     top: 32px;
@@ -185,5 +218,13 @@
       "Helvetica Neue",
       sans-serif;
     font-style: italic;
+  }
+
+  .dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
   }
 </style>
