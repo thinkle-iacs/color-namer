@@ -8,7 +8,18 @@
 
 <style global>
   :global(button) {
-    border: 4px solid purple;
+    border: 4px solid;
+    border-image: linear-gradient(
+        45deg,
+        red,
+        orange,
+        yellow,
+        green,
+        blue,
+        indigo,
+        violet
+      )
+      1;
     background: white;
     border-radius: 8px;
     margin: 1em;

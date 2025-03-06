@@ -51,8 +51,10 @@
   }
 </script>
 
-{rgbColorOptions.length}
-<div class="selector" style:--side-size={1 + diff * 2}>
+<div
+  class="selector"
+  style:--side-size={Math.round(Math.sqrt(rgbColorOptions.length))}
+>
   {#each rgbColorOptions as rgb}
     <button
       style="background-color: rgb({rgb.r}, {rgb.g}, {rgb.b})"
