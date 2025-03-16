@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Color Namer Game Server</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 10px;
+        border-radius: 5px;
+        overflow: auto;
+      }
+      .status {
+        margin-top: 20px;
+        padding: 10px;
+        background: #e6f7ff;
+        border-radius: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Color Namer Game Server</h1>
+    <p>WebSocket server is running!</p>
+
+    <h2>Connection Information</h2>
+    <p>Server URL: <code id="serverUrl">Loading...</code></p>
+
+    <h2>Game Status</h2>
+    <div class="status" id="statusContainer">Loading...</div>
+
+    <script>
+      // Display server URL
+      document.getElementById("serverUrl").textContent = window.location.origin;
+
+      // Fetch status periodically
+      async function updateStatus() {
+        try {
+          const response = await fetch("/status");
+          const data = await response.json();
+
+          document.getElementById("statusContainer").innerHTML = `
+          <p>Status: ${data.status}</p>
+          <p>Active games: ${data.games}</p>
+          <p>Server uptime: ${Math.floor(data.uptime / 60)} minutes</p>
+        `;
+        } catch (error) {
+          document.getElementById("statusContainer").textContent =
+            "Error fetching status";
+        }
+      }
+
+      updateStatus();
+      setInterval(updateStatus, 10000);
+    </script>
+  </body>
+</html>
