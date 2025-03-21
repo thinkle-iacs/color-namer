@@ -75,8 +75,8 @@
   // Replace WebSocket connection with Socket.IO
   function connectSocket() {
     // Use your new Render URL
-    //const serverUrl = "https://color-namer-ulgb.onrender.com";
-    const serverUrl = 'http://localhost:3000'
+    const serverUrl = "https://color-namer-ulgb.onrender.com";
+    //const serverUrl = 'http://localhost:3000'
     $inspect("Connect socket with game", game);
     socket = io(serverUrl, {
       query: game.id ? { gameId: game.id } : {},
