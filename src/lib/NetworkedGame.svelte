@@ -564,5 +564,5 @@
     margin: 1rem 0;
   }
   
-  .player-
+
 </style>
