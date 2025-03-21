@@ -1,8 +1,21 @@
-const express = require('express');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const path = require('path');
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+/**
+ * @typedef {import('../src/lib/types').Color} Color
+ * @typedef {import('../src/lib/types').GameState} GameState
+ * @typedef {import('../src/lib/types').Player} Player
+ * @typedef {import('../src/lib/types').ClientMessage} ClientMessage
+ * @typedef {import('../src/lib/types').ServerMessage} ServerMessage
+ */
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const httpServer = createServer(app);
@@ -20,9 +33,12 @@ app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // In-memory game storage
+/** @type {Map<string, GameState>} */
 const games = new Map();
 
-// Function to clean up inactive games
+/**
+ * Function to clean up inactive games
+ */
 function cleanupInactiveGames() {
   const now = Date.now();
   for (const [gameId, game] of games.entries()) {
@@ -39,6 +55,11 @@ function cleanupInactiveGames() {
 // Run cleanup every 15 minutes
 setInterval(cleanupInactiveGames, 15 * 60 * 1000);
 
+/**
+ * Create a new game or return an existing one
+ * @param {string} [gameId]
+ * @returns {GameState}
+ */
 function createGame(gameId = null) {
   const id = gameId || Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -60,10 +81,14 @@ function createGame(gameId = null) {
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('New connection:', socket.id);
+  /** @type {string | null} */
   let playerId = null;
+  /** @type {string | null} */
   let gameId = null;
 
-  // Update last activity time for game
+  /**
+   * Update last activity time for game
+   */
   function updateActivity() {
     if (gameId && games.has(gameId)) {
       games.get(gameId).lastActivity = Date.now();
@@ -76,7 +101,10 @@ io.on('connection', (socket) => {
     console.log(`Connection requested for game: ${gameId}`);
   }
 
-  // Handle messages with the same structure as your worker
+  /**
+   * Handle JOIN_GAME message
+   * @param {ClientMessage} data
+   */
   socket.on('JOIN_GAME', (data) => {
     gameId = data.gameId || createGame().id;
     playerId = socket.id;
@@ -85,6 +113,7 @@ io.on('connection', (socket) => {
     updateActivity();
 
     // Create new player
+    /** @type {Player} */
     const player = {
       id: playerId,
       name: data.name,
@@ -100,10 +129,14 @@ io.on('connection', (socket) => {
     socket.join(gameId);
 
     // Send confirmation
-    socket.emit('CONNECTED', { gameId, playerId });
+    /** @type {ServerMessage} */
+    const connectedMessage = { type: 'CONNECTED', gameId, playerId };
+    socket.emit('CONNECTED', connectedMessage);
 
     // Broadcast updated game state
-    io.to(gameId).emit('GAME_UPDATE', game);
+    /** @type {ServerMessage} */
+    const gameUpdateMessage = { type: 'GAME_UPDATE', gameState: game };
+    io.to(gameId).emit('GAME_UPDATE', gameUpdateMessage);
 
     console.log(`Player ${data.name} (${playerId}) joined game ${gameId}`);
   });
@@ -133,7 +166,9 @@ io.on('connection', (socket) => {
       updateActivity();
 
       // Broadcast updated state
-      io.to(gameId).emit('GAME_UPDATE', game);
+      /** @type {ServerMessage} */
+      const gameUpdateMessage = { type: 'GAME_UPDATE', gameState: game };
+      io.to(gameId).emit('GAME_UPDATE', gameUpdateMessage);
 
       console.log(`Player ${playerId} disconnected from game ${gameId}`);
     }
@@ -159,3 +194,5 @@ const PORT = process.env.PORT || 3000;
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+export { httpServer, io, games }; // Export for testing purposes

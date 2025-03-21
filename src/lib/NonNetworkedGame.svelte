@@ -80,8 +80,6 @@
   let delay = true;
 </script>
 
-<h1>Color Namer</h1>
-
 {#if numPlayers === null}
   <h2>Select Number of Players</h2>
   <div class="player-select">
@@ -128,15 +126,6 @@
         {#key players[activeGuessIndex].name}
           <ColorPicker onconfirm={(c) => submitGuess(c)} />
         {/key}
-
-        <p>Players Guessed:</p>
-        <ul>
-          {#each players as player}
-            <li style="color: {player.color}">
-              {player.name}: {player.guess ? "✅" : "❌"}
-            </li>
-          {/each}
-        </ul>
       {:else}
         <AnswerRevealer
           color={theColor!}
@@ -157,8 +146,7 @@
   div {
     width: max(calc(100vw - 32px), 500px);
     height: max(70vh, 750px);
-    display: grid;
-    place-content: center;
+    display: block;
   }
 
   .player-select {
