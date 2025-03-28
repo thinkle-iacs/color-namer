@@ -23,7 +23,6 @@
     currentColor: null,
     clue: "",
   });
-  
 
   // Current player
   let me: Player = $state({
@@ -56,10 +55,15 @@
 
   // #region WebSocket & Session Management
   onMount(() => {
+    console.log("Component mounted");
+
     // Check URL for game ID
     const params = new URLSearchParams(window.location.search);
     const urlGameId = params.get("game");
-    if (urlGameId) game.id = urlGameId;
+    if (urlGameId) {
+      console.log("Found game ID in URL:", urlGameId);
+      game.id = urlGameId;
+    }
 
     // Try to restore session
     restoreSession();
@@ -74,10 +78,11 @@
 
   // Replace WebSocket connection with Socket.IO
   function connectSocket() {
+    console.log("Connecting to socket...");
     // Use your new Render URL
     const serverUrl = "https://color-namer-ulgb.onrender.com";
     //const serverUrl = 'http://localhost:3000'
-    
+
     socket = io(serverUrl, {
       query: game.id ? { gameId: game.id } : {},
       reconnectionAttempts: 5,
@@ -86,10 +91,14 @@
 
     // Handle connection events
     socket.on("connect", () => {
-      
+      console.log("Connected to game server");
 
       // Reconnect with existing session if available
-      if (me.id && game.id) {        
+      if (me.id && game.id) {
+        console.log("Reconnecting with existing session:", {
+          playerId: me.id,
+          gameId: game.id,
+        });
         socket!.emit("RECONNECT", {
           playerId: me.id,
           gameId: game.id,
@@ -105,7 +114,8 @@
 
     // Replace message handling
     socket.on("CONNECTED", (data: ServerMessage) => {
-      if (data.type === "CONNECTED") {        
+      console.log("Received CONNECTED message:", data);
+      if (data.type === "CONNECTED") {
         game.id = data.gameId;
         me.id = data.playerId;
 
@@ -120,13 +130,23 @@
       }
     });
 
+    socket.on("GAME_CREATED", (data: ServerMessage) => {
+      console.log("Received GAME_CREATED message:", data);
+      if (data.type === "GAME_CREATED") {
+        game.id = data.gameId;
+        console.log("New game created with ID:", game.id);
+      }
+    });
+
     socket.on("RECONNECTED", (data: ServerMessage) => {
+      console.log("Received RECONNECTED message:", data);
       if (data.type === "RECONNECTED") {
         console.log("Successfully reconnected to game");
       }
     });
 
     socket.on("GAME_UPDATE", (data: ServerMessage) => {
+      console.log("Received GAME_UPDATE message:", data);
       if (data.type === "GAME_UPDATE") {
         // Update game state
         game = {
@@ -146,6 +166,7 @@
     });
 
     socket.on("ERROR", (data: ServerMessage) => {
+      console.log("Received ERROR message:", data);
       if (data.type === "ERROR") {
         console.error("Server error:", data.message);
       }
@@ -162,6 +183,7 @@
   // Type-safe way to send messages
   function sendMessage(message: ClientMessage) {
     if (socket && socket.connected) {
+      console.log("Sending message:", message);
       socket.emit(message.type, message);
     } else {
       console.warn("Socket not connected, can't send message");
@@ -170,6 +192,7 @@
 
   function saveSession() {
     if (game.id && me.id && me.name) {
+      console.log("Saving session:", { gameId: game.id, player: me });
       localStorage.setItem(
         "colorNamerSession",
         JSON.stringify({
@@ -189,6 +212,7 @@
     if (saved) {
       try {
         const data = JSON.parse(saved);
+        console.log("Restoring session:", data);
         game.id = data.gameId;
         game = game;
         if (data.player) {
@@ -197,7 +221,6 @@
           me.color = data.player.color;
         }
         me = me;
-        
 
         return true;
       } catch (e) {
@@ -208,6 +231,7 @@
   }
 
   function resetSession() {
+    console.log("Resetting session");
     localStorage.removeItem("colorNamerSession");
     if (socket) socket.disconnect();
 
@@ -242,10 +266,17 @@
   // #endregion
 
   // #region Game Actions
+  function createGame() {
+    if (!socket) return;
+    console.log("Creating new game");
+    socket.emit("CREATE_GAME");
+  }
+
   function joinGame() {
     if (!socket || !draftName) return;
 
     me.name = draftName;
+    console.log("Joining game with name:", me.name);
 
     socket.emit("JOIN_GAME", {
       name: me.name,
@@ -257,29 +288,35 @@
   }
 
   function startGame() {
-    debugger;
+    console.log("Starting game");
     if (!socket) return;
-    socket.emit("SET_COLOR", { color: null });
+    socket.emit("START_GAME", {
+      gameId: game.id,
+    });
   }
 
   function setColorAndClue(color: Color, clue: string) {
+    console.log("Setting color and clue:", { color, clue });
     if (!socket) return;
     socket.emit("SET_COLOR", { color, clue });
   }
 
   function submitGuess(color: Color) {
+    console.log("Submitting guess:", color);
     if (!socket) return;
     socket.emit("SUBMIT_GUESS", { color });
     me.guess = color; // Optimistic update
   }
 
   function nextRound() {
+    console.log("Starting next round");
     if (!socket) return;
     socket.emit("NEXT_ROUND");
   }
 
   function resetDraftColor() {
     draftColor = generateRandomColor();
+    console.log("Reset draft color:", draftColor);
   }
 
   function generateRandomColor(): Color {
@@ -327,13 +364,14 @@
     return "";
   }
   // #endregion
-  $inspect('The game is',game);
+  $inspect("The game is", game);
 </script>
 
 <!-- UI remains mostly the same, but references game.players instead of players -->
 {#if !me.name}
   <input bind:value={draftName} placeholder="Enter your name" />
   <button onclick={joinGame}>Join Game</button>
+  <button onclick={createGame}>Create New Game</button>
 {:else if game.state === "WAITING_FOR_COLOR" && isMyTurn}
   <div class="color-picker-container">
     <h2>Your Turn!</h2>
@@ -394,6 +432,9 @@
 
         <button onclick={joinGame} disabled={!draftName}>
           {game.id ? "Join Game" : "Create Game"}
+        </button>
+        <button onclick={createGame} disabled={!draftName}>
+          Create New Game
         </button>
       </div>
     </div>
@@ -494,50 +535,53 @@
 
 <style>
   .game-container {
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
   }
-  
+
   .join-screen {
     max-width: 400px;
     margin: 100px auto;
     padding: 2rem;
     background-color: #f8f9fa;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     text-align: center;
   }
-  
+
   .form-group {
     margin: 1.5rem 0;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  
+
   .form-group label {
     font-weight: bold;
     margin-bottom: 5px;
   }
-  
+
   .game-layout {
     display: flex;
     min-height: 600px;
     background: #fff;
     border-radius: 8px;
     overflow: hidden;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   }
-  
+
   .players-sidebar {
     width: 250px;
     padding: 1.5rem;
     background: #f8f9fa;
     border-right: 1px solid #e9ecef;
   }
-  
+
   .game-area {
     flex: 1;
     padding: 2rem;
@@ -546,22 +590,21 @@
     align-items: center;
     justify-content: center;
   }
-  
+
   .waiting {
     text-align: center;
     max-width: 500px;
   }
-  
-  .guessing, .color-picker-container {
+
+  .guessing,
+  .color-picker-container {
     width: 100%;
     max-width: 600px;
   }
-  
+
   .player-list {
     list-style: none;
     padding: 0;
     margin: 1rem 0;
   }
-  
-
 </style>
