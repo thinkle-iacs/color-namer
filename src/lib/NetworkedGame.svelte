@@ -23,7 +23,7 @@
     currentColor: null,
     clue: "",
   });
-  $inspect('Game:',game);
+  
 
   // Current player
   let me: Player = $state({
@@ -77,7 +77,7 @@
     // Use your new Render URL
     const serverUrl = "https://color-namer-ulgb.onrender.com";
     //const serverUrl = 'http://localhost:3000'
-    $inspect("Connect socket with game", game);
+    
     socket = io(serverUrl, {
       query: game.id ? { gameId: game.id } : {},
       reconnectionAttempts: 5,
@@ -86,11 +86,10 @@
 
     // Handle connection events
     socket.on("connect", () => {
-      $inspect("Connected to game server", game);
+      
 
       // Reconnect with existing session if available
-      if (me.id && game.id) {
-        $inspect("Reconnecting with existing session", game);
+      if (me.id && game.id) {        
         socket!.emit("RECONNECT", {
           playerId: me.id,
           gameId: game.id,
@@ -106,8 +105,7 @@
 
     // Replace message handling
     socket.on("CONNECTED", (data: ServerMessage) => {
-      if (data.type === "CONNECTED") {
-        $inspect("Connected", data);
+      if (data.type === "CONNECTED") {        
         game.id = data.gameId;
         me.id = data.playerId;
 
@@ -199,7 +197,7 @@
           me.color = data.player.color;
         }
         me = me;
-        $inspect("Updated game", game, "me", me);
+        
 
         return true;
       } catch (e) {
@@ -329,6 +327,7 @@
     return "";
   }
   // #endregion
+  $inspect('The game is',game);
 </script>
 
 <!-- UI remains mostly the same, but references game.players instead of players -->
