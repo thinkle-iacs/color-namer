@@ -520,4 +520,58 @@ describe('Color Namer Server', function () {
     });
   });
 
+  it('should return the current game state when GET_GAME_STATE is called', function (done) {
+    const gameId = 'TEST_GAME_STATE';
+    const socket = Client('http://localhost:4000', {
+      query: { gameId }
+    });
+    console.log('Created socket for TEST_GAME_STATE');
+    // Step 1: Create a game
+    socket.on('connect', function () {
+      console.log('Connected... join game next')
+      setTimeout(() => {
+        console.log('Waited a sec, now join game');
+        socket.emit('JOIN_GAME', {
+          name: 'Player 1',
+          color: { lightness: 50, a: 0, b: 0 },
+          gameId,
+        });
+      }, 100);
+    });
+
+    socket.on('GAME_CREATED', function (data) {
+      console.log('Created game...');
+      expect(data.gameId).to.exist;
+      expect(data.gameId).to.equal(gameId);
+      console.log('Created game', data);
+
+      // Step 2: Join the game
+      console.log('Join game')
+
+    });
+
+    socket.on('GAME_STATE', function (data) {
+      console.log('Got me a game state update', data)
+      expect(data.type).to.equal('GAME_STATE');
+      expect(data.gameState.id).to.equal(gameId);
+      expect(data.gameState.players).to.have.lengthOf(1);
+      expect(data.gameState.players[0].name).to.equal('Player 1');
+      socket.disconnect();
+      done();
+    });
+
+    socket.on('GAME_UPDATE', function (game) {
+      if (game.gameState.players.length === 1) {
+        // Step 3: Request the current game state       
+        console.log("Got an update, we have a player, now let's ask for the game state again")
+        socket.emit('GET_GAME_STATE', { gameId });
+      }
+
+    });
+
+    socket.on('error', function (err) {
+      console.error('Socket error:', err);
+    });
+  });
+
 });

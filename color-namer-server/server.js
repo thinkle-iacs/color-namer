@@ -307,6 +307,22 @@ io.on('connection', (socket) => {
       //console.log(`Player ${playerId} disconnected from game ${gameId}`);
     }
   });
+
+  socket.on('GET_GAME_STATE', (data) => {
+    console.log('Get game state!')
+    const { gameId } = data;
+
+    if (!gameId || !games.has(gameId)) {
+      socket.emit('ERROR', { type: 'ERROR', message: 'Game not found' });
+      return;
+    }
+
+    const game = games.get(gameId);
+
+    // Send the current game state to the client
+    const gameStateMessage = { type: 'GAME_STATE', gameState: game };
+    socket.emit('GAME_STATE', gameStateMessage);
+  });
 });
 
 // Add a simple root route
