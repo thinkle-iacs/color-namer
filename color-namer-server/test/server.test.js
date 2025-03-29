@@ -41,10 +41,6 @@ describe('Color Namer Server', function () {
   it('should create a new game', function (done) {
     const socket = Client('http://localhost:4000');
 
-    socket.on('connect', function () {
-      console.log(`[${this.test.title}] Connected to server`);
-      socket.emit('CREATE_GAME');
-    }.bind(this));
 
     socket.on('GAME_CREATED', function (data) {
       console.log(`[${this.test.title}] GAME_CREATED event received:`, data);
@@ -56,6 +52,13 @@ describe('Color Namer Server', function () {
     socket.on('error', function (err) {
       console.error(`[${this.test.title}] Socket error:`, err);
     }.bind(this));
+
+
+    socket.on('connect', function () {
+      console.log(`[${this.test.title}] Connected to server`);
+      socket.emit('CREATE_GAME');
+    }.bind(this));
+
   });
 
 
