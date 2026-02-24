@@ -39,7 +39,8 @@
     </div>
   </div>
 
-  <div class="component-wrap">
+  <!-- Simulates the game's .picking flex column (align-items: center) -->
+  <div class="game-context">
     {#if stateNum === 1}
       <GradientPicker
         center={{ lightness: 50, a: 0, b: 0 }}
@@ -94,7 +95,17 @@
   }
   .state-links a { color: #6af; text-decoration: none; }
   .state-links a.active { color: #fff; font-weight: bold; text-decoration: underline; }
-  .component-wrap { margin-top: 0.5rem; }
+  /* Mirrors .picking from PickingView so layout bugs show up in tests */
+  .game-context {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    margin-top: 0.5rem;
+    gap: 1rem;
+    border: 1px dashed #333;
+    max-width: min(900px, calc(100vh - 120px));
+  }
   .label {
     font-size: 0.85rem;
     color: #888;

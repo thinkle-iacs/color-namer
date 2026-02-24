@@ -65,5 +65,6 @@
 <style>
   .color-picker {
     display: block;
+    width: 100%;
   }
 </style>

@@ -20,7 +20,8 @@
     <p>Also: <a href="/test/resultScreen">Result Screen</a></p>
   </div>
 
-  <div class="picker-wrap">
+  <!-- Simulates the game's .picking flex column (align-items: center) -->
+  <div class="game-context">
     <ColorPicker onconfirm={(c) => (confirmed = c)} />
   </div>
 
@@ -43,7 +44,17 @@
   .test-header h1 { margin: 0 0 0.5rem; font-size: 1.2rem; color: #aaa; }
   .test-header p { font-size: 0.85rem; color: #666; margin: 0 0 0.3rem; }
   .test-header a { color: #6af; }
-  .picker-wrap { margin-top: 1.5rem; }
+  /* Mirrors .picking from PickingView so layout bugs show up in tests */
+  .game-context {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    margin-top: 0.5rem;
+    gap: 1rem;
+    border: 1px dashed #333;
+    max-width: min(900px, calc(100vh - 120px));
+  }
   .confirmed-box {
     margin-top: 1rem;
     padding: 0.6rem 1rem;

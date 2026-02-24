@@ -29,12 +29,14 @@
       <h2>Your turn to pick a color!</h2>
       <p>Choose any color — your clue can't mention any color names.</p>
     </div>
-    <ColorPicker
-      onconfirm={(color) => {
-        onColorPicked(color);
-        step = 'clue';
-      }}
-    />
+    <div class="picker-wrap">
+      <ColorPicker
+        onconfirm={(color) => {
+          onColorPicked(color);
+          step = 'clue';
+        }}
+      />
+    </div>
   {:else if pickedColor}
     <div class="clue-step">
       <div class="chosen-swatch-wrap">
@@ -71,6 +73,13 @@
     padding: 1.5rem;
     gap: 1rem;
     overflow-y: auto;
+  }
+
+  .picker-wrap {
+    width: 100%;
+    /* Grow to fill available vertical space: viewport minus instructions (~120px overhead).
+       Cap at 900px so it doesn't get absurd on very tall screens. */
+    max-width: min(900px, calc(100vh - 120px));
   }
 
   .instructions {
