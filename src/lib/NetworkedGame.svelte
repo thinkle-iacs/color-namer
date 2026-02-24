@@ -132,10 +132,9 @@
 
     socket.on("GAME_CREATED", (data: ServerMessage) => {
       console.log("Received GAME_CREATED message:", data);
-      if (data.type === "GAME_CREATED") {
-        game.id = data.gameId;
-        console.log("New game created with ID:", game.id);
-      }
+
+      game.id = data.gameId;
+      console.log("New game created with ID:", game.id);
     });
 
     socket.on("RECONNECTED", (data: ServerMessage) => {
@@ -389,13 +388,41 @@
       <button onclick={startGame}>Start Game</button>
     {/if}
   </div>
-{:else if game.state === "GUESSING" && !isMyTurn && !me.guess}
-  <!-- Guessing UI -->
-  <div class="guessing">
-    <h2>Guess the Color</h2>
-    <p>Clue: "{game.clue}"</p>
-    <ColorPicker onconfirm={(color) => submitGuess(color)} />
-  </div>
+{:else if game.state === "GUESSING"}
+  {#if isMyTurn}
+    <!-- Current player is the describer -->
+    <div class="waiting">
+      <h2>Waiting for players to guess...</h2>
+      <ul>
+        {#each game.players.filter((p, i) => i !== game.currentPlayerIndex) as player}
+          <li class:guessed={player.guess !== null}>
+            {player.name}
+            {player.guess !== null ? "✅" : "❌"}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {:else if !me.guess}
+    <!-- Current player is a guessing player and hasn't guessed yet -->
+    <div class="guessing">
+      <h2>Guess the Color</h2>
+      <p>Clue: "{game.clue}"</p>
+      <ColorPicker onconfirm={(color) => submitGuess(color)} />
+    </div>
+  {:else}
+    <!-- Current player is a guessing player and has already guessed -->
+    <div class="waiting">
+      <h2>Waiting for other players to guess...</h2>
+      <ul>
+        {#each game.players.filter((p, i) => i !== game.currentPlayerIndex) as player}
+          <li class:guessed={player.guess !== null}>
+            {player.name}
+            {player.guess !== null ? "✅" : "❌"}
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
 {:else if game.state === "REVEAL"}
   <AnswerRevealer
     color={game.currentColor!}
@@ -417,6 +444,10 @@
 
 <!-- Add the player list and reset button here -->
 <div class="game-container">
+  <div class="debug">
+    {JSON.stringify(game)}
+  </div>
+
   {#if !me.name}
     <!-- Name entry screen -->
     <div class="join-screen">
@@ -440,6 +471,7 @@
     </div>
   {:else}
     <!-- Game screen -->
+
     <div class="game-layout">
       <!-- Player sidebar -->
       <div class="players-sidebar">
@@ -504,12 +536,41 @@
               <button onclick={startGame}>Start Game</button>
             {/if}
           </div>
-        {:else if game.state === "GUESSING" && !isMyTurn && !me.guess}
-          <div class="guessing">
-            <h2>Guess the Color</h2>
-            <p>Clue: "{game.clue}"</p>
-            <ColorPicker onconfirm={(color) => submitGuess(color)} />
-          </div>
+        {:else if game.state === "GUESSING"}
+          {#if isMyTurn}
+            <!-- Current player is the describer -->
+            <div class="waiting">
+              <h2>Waiting for players to guess...</h2>
+              <ul>
+                {#each game.players.filter((p, i) => i !== game.currentPlayerIndex) as player}
+                  <li class:guessed={player.guess !== null}>
+                    {player.name}
+                    {player.guess !== null ? "✅" : "❌"}
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {:else if !me.guess}
+            <!-- Current player is a guessing player and hasn't guessed yet -->
+            <div class="guessing">
+              <h2>Guess the Color</h2>
+              <p>Clue: "{game.clue}"</p>
+              <ColorPicker onconfirm={(color) => submitGuess(color)} />
+            </div>
+          {:else}
+            <!-- Current player is a guessing player and has already guessed -->
+            <div class="waiting">
+              <h2>Waiting for other players to guess...</h2>
+              <ul>
+                {#each game.players.filter((p, i) => i !== game.currentPlayerIndex) as player}
+                  <li class:guessed={player.guess !== null}>
+                    {player.name}
+                    {player.guess !== null ? "✅" : "❌"}
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
         {:else if game.state === "REVEAL"}
           <AnswerRevealer
             color={game.currentColor}

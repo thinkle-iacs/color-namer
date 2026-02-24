@@ -32,14 +32,27 @@ export type GameState = {
 // Client → Server Messages
 export type ClientMessage =
   | {
+      type: "GET_GAME_STATE";
+      gameId: string;
+    }
+  | {
       type: "JOIN_GAME";
       name: string;
       color: Color;
       gameId?: string;
     }
   | {
+      type: "LEAVE_GAME";
+      playerId: string;
+      gameId: string;
+    }
+  | {
+      type: "START_GAME";
+      gameId: string;
+    }
+  | {
       type: "SET_COLOR";
-      color: Color | null;
+      color: Color;
       clue?: string;
     }
   | {
@@ -62,6 +75,10 @@ export type ClientMessage =
 
 // Server → Client Messages
 export type ServerMessage =
+  | {
+      type: "GAME_STATE";
+      gameState: GameState;
+    }
   | {
       type: "CONNECTED";
       gameId: string;

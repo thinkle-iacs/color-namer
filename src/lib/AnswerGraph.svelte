@@ -12,8 +12,8 @@
   let ctx: CanvasRenderingContext2D | null = null;
 
   // 🎛️ Controls
-  let tilt = 0; // 0° (flat A/B) to 90° (L depth)
-  let axisMode: "A vs B" | "L vs A" | "L vs B" = "A vs B"; // Toggle for axis projection
+  let tilt = $state(0); // 0° (flat A/B) to 90° (L depth)
+  let axisMode: "A vs B" | "L vs A" | "L vs B" = $state("A vs B"); // Toggle for axis projection
 
   function clamp(value: number, min: number, max: number) {
     return Math.max(min, Math.min(max, value));
@@ -162,27 +162,27 @@
       max="90"
       bind:value={tilt}
       step="1"
-      on:input={handleChange}
+      oninput={handleChange}
     />
   </label>
 
   <div class="axis-controls">
     <button
-      on:click={() => {
+      onclick={() => {
         axisMode = "A vs B";
         handleChange();
       }}
       class:active={axisMode === "A vs B"}>A vs B</button
     >
     <button
-      on:click={() => {
+      onclick={() => {
         axisMode = "L vs A";
         handleChange();
       }}
       class:active={axisMode === "L vs A"}>L vs A</button
     >
     <button
-      on:click={() => {
+      onclick={() => {
         axisMode = "L vs B";
         handleChange();
       }}
@@ -219,7 +219,7 @@
     border: 2px solid white;
     background: black;
     color: white;
-    transition: 0.2s ease-in-out;
+    transition 0.2s ease-in-out;
   }
   .axis-controls button.active {
     background: white;
