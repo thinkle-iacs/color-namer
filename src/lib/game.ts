@@ -6,7 +6,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Color, GameDoc, GameStatus, PlayerInfo, RoundResult } from './types';
+import type { Color, Difficulty, GameDoc, GameStatus, PlayerInfo, RoundResult } from './types';
 
 // ── Player identity ────────────────────────────────────────────────────────────
 
@@ -84,11 +84,13 @@ export async function createGame(playerId: string, playerName: string): Promise<
   const gameDoc: GameDoc = {
     status: 'lobby',
     hostId: playerId,
+    difficulty: 'easy',
     pickerIndex: 0,
     roundNumber: 0,
     createdAt: Date.now(),
     playerOrder: [playerId],
     players: { [playerId]: playerInfo },
+    roundSeed: null,
     roundClue: null,
     roundGuesses: {},
     roundTarget: null,
@@ -128,11 +130,13 @@ export async function joinGame(
   return { ok: true };
 }
 
-export async function startGame(gameId: string): Promise<void> {
+export async function startGame(gameId: string, difficulty: Difficulty): Promise<void> {
   await updateDoc(doc(db, 'games', gameId), {
     status: 'picking' as GameStatus,
+    difficulty,
     pickerIndex: 0,
     roundNumber: 1,
+    roundSeed: Math.floor(Math.random() * 2 ** 31),
     roundClue: null,
     roundGuesses: {},
     roundTarget: null,
@@ -199,6 +203,7 @@ export async function nextRound(gameId: string): Promise<void> {
     status: 'picking' as GameStatus,
     pickerIndex: nextPickerIndex,
     roundNumber: data.roundNumber + 1,
+    roundSeed: Math.floor(Math.random() * 2 ** 31),
     roundClue: null,
     roundGuesses: {},
     roundTarget: null,

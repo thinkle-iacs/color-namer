@@ -1,14 +1,15 @@
 <script lang="ts">
-  import type { GameDoc } from './types';
+  import type { Difficulty, GameDoc } from './types';
 
   const { game, playerId, gameId, onStart } = $props<{
     game: GameDoc;
     playerId: string;
     gameId: string;
-    onStart: () => void;
+    onStart: (difficulty: Difficulty) => void;
   }>();
 
   let copied = $state(false);
+  let difficulty = $state<Difficulty>('easy');
 
   function copyLink() {
     navigator.clipboard.writeText(`${window.location.origin}/game/${gameId}`);
@@ -19,6 +20,12 @@
   let isHost = $derived(game.hostId === playerId);
   let playerCount = $derived(game.playerOrder.length);
   let canStart = $derived(isHost && playerCount >= 2);
+
+  const difficultyInfo: Record<Difficulty, { label: string; desc: string }> = {
+    easy:   { label: 'Easy',   desc: 'You pick any color to clue' },
+    medium: { label: 'Medium', desc: 'Pick one of 6 random colors to clue' },
+    hard:   { label: 'Hard',   desc: 'A color is assigned — no choice!' },
+  };
 </script>
 
 <div class="lobby">
@@ -52,10 +59,24 @@
   </div>
 
   {#if isHost}
+    <div class="difficulty-section">
+      <p class="label">Difficulty</p>
+      <div class="diff-buttons">
+        {#each (['easy', 'medium', 'hard'] as const) as d}
+          <button
+            class="diff-btn"
+            class:active={difficulty === d}
+            onclick={() => difficulty = d}
+          >{difficultyInfo[d].label}</button>
+        {/each}
+      </div>
+      <p class="diff-desc">{difficultyInfo[difficulty].desc}</p>
+    </div>
+
     <button
       class="start-btn"
       disabled={!canStart}
-      onclick={onStart}
+      onclick={() => onStart(difficulty)}
     >
       {canStart ? 'Start game' : 'Need at least 2 players'}
     </button>
@@ -154,6 +175,39 @@
   }
   .host-badge { background: #333; color: #fa0; }
   .you-badge  { background: #223; color: #6af; }
+
+  .difficulty-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .diff-buttons {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .diff-btn {
+    font-size: 0.95rem;
+    padding: 0.4em 1.1em;
+    border-radius: 8px;
+    border: 2px solid #444;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+  }
+  .diff-btn.active { background: #2a2a3a; color: #fff; border-color: #6af; }
+  .diff-btn:hover:not(.active) { border-color: #666; color: #ccc; }
+
+  .diff-desc {
+    font-size: 0.82rem;
+    color: #777;
+    margin: 0;
+    min-height: 1.2em;
+  }
 
   .start-btn {
     font-size: 1.2rem;
