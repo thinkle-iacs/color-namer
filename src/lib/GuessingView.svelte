@@ -26,17 +26,38 @@
   let guessCount = $derived(Object.keys(game.roundGuesses).length);
   let totalGuessers = $derived(game.playerOrder.length - 1);
   let revealing = $state(false);
+  let autoRevealTriggered = $state(false);
+  let revealError = $state('');
 
   async function handleGuess(color: Color) {
     await submitGuess(gameId, playerId, color);
   }
 
-  async function handleReveal() {
+  async function handleReveal(auto = false) {
     if (!localPickedColor) return;
+    revealError = '';
     revealing = true;
-    await revealTarget(gameId, localPickedColor);
+    try {
+      await revealTarget(gameId, localPickedColor);
+    } catch {
+      revealError = 'Auto-reveal failed. Tap reveal to retry.';
+      if (auto) autoRevealTriggered = false;
+    }
     revealing = false;
   }
+
+  $effect(() => {
+    const shouldAutoReveal =
+      amPicker &&
+      allGuessersSubmitted &&
+      !!localPickedColor &&
+      !revealing &&
+      !autoRevealTriggered &&
+      !game.roundTarget;
+    if (!shouldAutoReveal) return;
+    autoRevealTriggered = true;
+    handleReveal(true);
+  });
 </script>
 
 <div class="guessing">
@@ -76,16 +97,26 @@
       </div>
 
       {#if allGuessersSubmitted}
-        <p class="all-in">Everyone's in — reveal your color!</p>
+        <p class="all-in">
+          {#if revealing}
+            Everyone's in — revealing…
+          {:else}
+            Everyone's in — revealing automatically…
+          {/if}
+        </p>
       {/if}
 
       <button
         class="reveal-btn"
-        disabled={!allGuessersSubmitted || revealing || !localPickedColor}
-        onclick={handleReveal}
+        disabled={!allGuessersSubmitted || revealing || !localPickedColor || autoRevealTriggered}
+        onclick={() => handleReveal(false)}
       >
-        {revealing ? 'Revealing…' : 'Reveal my color'}
+        {revealing ? 'Revealing…' : 'Reveal now'}
       </button>
+
+      {#if revealError}
+        <p class="reveal-error">{revealError}</p>
+      {/if}
 
       {#if !localPickedColor}
         <p class="no-color-warning">
@@ -211,6 +242,13 @@
   }
   .reveal-btn:hover:not([disabled]) { filter: brightness(1.15); }
   .reveal-btn[disabled] { opacity: 0.35; cursor: not-allowed; }
+
+  .reveal-error {
+    color: #f88;
+    font-size: 0.85rem;
+    text-align: center;
+    margin: 0;
+  }
 
   .no-color-warning {
     color: #f93;
