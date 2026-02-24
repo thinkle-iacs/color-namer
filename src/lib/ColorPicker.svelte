@@ -16,12 +16,7 @@
   function reset() {
     mode = "broad";
     zoom = 1;
-    color = {
-      lightness: 50,
-      a: 0,
-      b: 0,
-    };
-    tableLightness = 50;
+    color = { lightness: 50, a: 0, b: 0 };
   }
   let zoom = $state(1);
   let maxZoom = 3;
