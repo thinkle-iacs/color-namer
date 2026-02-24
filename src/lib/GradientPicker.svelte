@@ -5,10 +5,14 @@
   const {
     center = { lightness: 50, a: 0, b: 0 },
     zoom = 1,
+    selection = null,
+    selectionRange = null,
     onselect,
   } = $props<{
     center: { lightness: number; a: number; b: number };
     zoom: number; // 1 = full LAB space, 2 = half, etc.
+    selection?: { lightness: number; a: number; b: number } | null;
+    selectionRange?: number | null; // LAB half-range for the next zoom preview
     onselect: (selectedColor: { lightness: number; a: number; b: number }) => void;
   }>();
 
@@ -21,6 +25,25 @@
 
   // Canvas fills available width minus the lightness slider
   let canvasSize = $derived(Math.max(80, containerWidth - SLIDER_W - 2));
+  let currentRange = $derived(128 / zoom);
+
+  let selectionPoint = $derived.by(() => {
+    if (!selection) return null;
+    const xPct = ((selection.a - (center.a - currentRange)) / (currentRange * 2)) * 100;
+    const yPct = ((center.b + currentRange - selection.b) / (currentRange * 2)) * 100;
+    return {
+      x: Math.max(0, Math.min(100, xPct)),
+      y: Math.max(0, Math.min(100, yPct)),
+    };
+  });
+
+  let selectionBox = $derived.by(() => {
+    if (!selectionPoint || selectionRange === null) return null;
+    const sizePct = (selectionRange / currentRange) * 100;
+    const left = Math.max(0, Math.min(100 - sizePct, selectionPoint.x - sizePct / 2));
+    const top = Math.max(0, Math.min(100 - sizePct, selectionPoint.y - sizePct / 2));
+    return { sizePct, left, top };
+  });
 
   function updateLightness(clientY: number) {
     if (!lightnessSlider) return;
@@ -145,6 +168,28 @@
     <!-- a axis: left = −a (green), right = +a (red) -->
     <span class="axis left">−a green</span>
     <span class="axis right">+a red</span>
+
+    {#if selectionBox}
+      <div
+        class="selection-box"
+        style="
+          left: {selectionBox.left}%;
+          top: {selectionBox.top}%;
+          width: {selectionBox.sizePct}%;
+          height: {selectionBox.sizePct}%;
+        "
+      ></div>
+    {/if}
+
+    {#if selectionPoint}
+      <div
+        class="selection-dot"
+        style="
+          left: calc({selectionPoint.x}% - 5px);
+          top: calc({selectionPoint.y}% - 5px);
+        "
+      ></div>
+    {/if}
   </div>
 </div>
 
@@ -219,4 +264,22 @@
   .axis.bottom { bottom: 5px; left: 50%; transform: translateX(-50%); color: #88aaff; }
   .axis.left   { left: 6px;   top: 50%;  transform: translateY(-50%); color: #88dd88; }
   .axis.right  { right: 6px;  top: 50%;  transform: translateY(-50%); color: #ff9999; }
+
+  .selection-box {
+    position: absolute;
+    border: 2px dashed rgba(255, 255, 255, 0.92);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.2);
+    pointer-events: none;
+    border-radius: 2px;
+  }
+
+  .selection-dot {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+  }
 </style>

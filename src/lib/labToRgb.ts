@@ -51,35 +51,122 @@ function mulberry32(seed: number) {
   };
 }
 
+type LabColor = { lightness: number; a: number; b: number };
+
+function labDistance(c1: LabColor, c2: LabColor): number {
+  const dl = c1.lightness - c2.lightness;
+  const da = c1.a - c2.a;
+  const db = c1.b - c2.b;
+  return Math.sqrt(dl * dl + da * da + db * db);
+}
+
+// Allow richer chroma in middle lightness; taper near black/white.
+function maxChromaForLightness(lightness: number): number {
+  const edge = Math.abs(lightness - 50) / 50; // 0 in middle, 1 at extremes
+  return 90 - edge * 70; // ~90 at mid, ~20 near ends
+}
+
+function sampleLabCandidate(rand: () => number): LabColor {
+  const lightness = Math.round(8 + rand() * 86); // 8–94
+  const maxC = maxChromaForLightness(lightness);
+  const minC = Math.min(12, maxC * 0.55);
+  const chroma = minC + rand() * (maxC - minC);
+  const angle = rand() * Math.PI * 2;
+  return {
+    lightness,
+    a: Math.round(chroma * Math.cos(angle)),
+    b: Math.round(chroma * Math.sin(angle)),
+  };
+}
+
+function isGamutSafe(color: LabColor): boolean {
+  const [r, g, bl] = labToRgb(color.lightness, color.a, color.b);
+  const [l2, a2, b2] = rgbToLab(r, g, bl);
+  return (
+    Math.abs(color.lightness - l2) <= 5 &&
+    Math.abs(color.a - a2) <= 9 &&
+    Math.abs(color.b - b2) <= 9
+  );
+}
+
 // Generate `count` varied, sRGB-gamut-safe LAB colors from a seed.
 // The same seed always produces the same colors (deterministic).
 export function generateColorOptions(seed: number, count: number): Array<{ lightness: number; a: number; b: number }> {
   const rand = mulberry32(seed);
-  const colors: Array<{ lightness: number; a: number; b: number }> = [];
+  const pool: LabColor[] = [];
   let attempts = 0;
+  const maxAttempts = Math.max(300, count * 260);
+  const targetPoolSize = Math.max(count * 36, 60);
 
-  while (colors.length < count && attempts < count * 30) {
+  while (pool.length < targetPoolSize && attempts < maxAttempts) {
     attempts++;
-    const l = Math.round(25 + rand() * 55);   // L: 25–80
-    const a = Math.round(-65 + rand() * 130);  // a: −65 to 65
-    const b = Math.round(-65 + rand() * 130);  // b: −65 to 65
+    const candidate = sampleLabCandidate(rand);
+    if (!isGamutSafe(candidate)) continue;
+    // Keep pool reasonably de-duped so final picks spread better.
+    if (pool.some((c) => labDistance(c, candidate) < 6)) continue;
+    pool.push(candidate);
+  }
 
-    // Gamut check: convert to RGB and back; if round-trip drifts too much
-    // the original LAB was outside sRGB and got clamped.
-    const [r, g, bl] = labToRgb(l, a, b);
-    const [l2, a2, b2] = rgbToLab(r, g, bl);
-    if (Math.abs(l - l2) <= 4 && Math.abs(a - a2) <= 8 && Math.abs(b - b2) <= 8) {
-      colors.push({ lightness: l, a, b });
+  const selected: LabColor[] = [];
+  const used = new Set<number>();
+
+  if (pool.length > 0) {
+    const firstIdx = Math.floor(rand() * pool.length);
+    selected.push(pool[firstIdx]);
+    used.add(firstIdx);
+  }
+
+  // Farthest-point selection with a lightness-spread bonus.
+  while (selected.length < count && used.size < pool.length) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < pool.length; i++) {
+      if (used.has(i)) continue;
+      const candidate = pool[i];
+
+      let minLabDist = Infinity;
+      let minLightDist = Infinity;
+      for (const chosen of selected) {
+        minLabDist = Math.min(minLabDist, labDistance(candidate, chosen));
+        minLightDist = Math.min(minLightDist, Math.abs(candidate.lightness - chosen.lightness));
+      }
+      // For the very first loop when selected is empty (defensive).
+      if (!isFinite(minLabDist)) minLabDist = 0;
+      if (!isFinite(minLightDist)) minLightDist = 0;
+
+      const score = minLabDist + minLightDist * 0.45;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx === -1) break;
+    selected.push(pool[bestIdx]);
+    used.add(bestIdx);
+  }
+
+  // Fallback: deterministic, gamut-safe fillers if pool was unexpectedly sparse.
+  while (selected.length < count) {
+    const step = selected.length;
+    const lightness = 20 + ((step * 37) % 70);
+    const maxC = maxChromaForLightness(lightness);
+    const chroma = maxC * 0.35;
+    const angle = (step * 2.399963229728653) % (Math.PI * 2); // golden angle
+    const candidate: LabColor = {
+      lightness,
+      a: Math.round(chroma * Math.cos(angle)),
+      b: Math.round(chroma * Math.sin(angle)),
+    };
+    if (isGamutSafe(candidate)) {
+      selected.push(candidate);
+    } else {
+      selected.push({ lightness, a: 0, b: 0 });
     }
   }
 
-  // Fallback: fill with neutral greys if we didn't get enough gamut-safe colors
-  while (colors.length < count) {
-    const step = colors.length;
-    colors.push({ lightness: 30 + step * 10, a: 0, b: 0 });
-  }
-
-  return colors;
+  return selected.slice(0, count);
 }
 
 export function rgbToLab(r: number, g: number, b: number) {

@@ -27,6 +27,7 @@
   let joinError = $state('');
   let joining = $state(false);
   let unsub: (() => void) | null = null;
+  let sidebarOpen = $state(false);
 
   // The picker's chosen color — stored only in the picker's browser until reveal
   let localPickedColor = $state<import('$lib/types').Color | null>(null);
@@ -145,8 +146,34 @@
 {:else}
   <!-- In-game layout -->
   <div class="game-layout">
+    <button
+      class="sidebar-toggle"
+      onclick={() => (sidebarOpen = !sidebarOpen)}
+      aria-label={sidebarOpen ? 'Close scoreboard' : 'Open scoreboard'}
+      aria-expanded={sidebarOpen}
+      aria-controls="game-sidebar"
+    >
+      ☰ Scoreboard
+    </button>
+
+    <button
+      class="sidebar-backdrop"
+      class:visible={sidebarOpen}
+      aria-label="Close scoreboard"
+      onclick={() => (sidebarOpen = false)}
+    ></button>
+
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside id="game-sidebar" class="sidebar" class:open={sidebarOpen}>
+      <div class="sidebar-mobile-head">
+        <span>Scoreboard</span>
+        <button
+          class="sidebar-close"
+          onclick={() => (sidebarOpen = false)}
+          aria-label="Close scoreboard"
+        >✕</button>
+      </div>
+
       <div class="game-id">
         <span class="code-label">Game code</span>
         <span class="code">{gameId}</span>
@@ -316,6 +343,15 @@
   .game-layout {
     display: flex;
     min-height: 100vh;
+    position: relative;
+  }
+
+  .sidebar-toggle {
+    display: none;
+  }
+
+  .sidebar-backdrop {
+    display: none;
   }
 
   .sidebar {
@@ -327,6 +363,11 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    z-index: 12;
+  }
+
+  .sidebar-mobile-head {
+    display: none;
   }
 
   .game-id {
@@ -427,4 +468,86 @@
   .waiting-icon { font-size: 4rem; }
   .waiting-screen h2 { margin: 0; font-size: 1.5rem; }
   .waiting-screen p { color: #888; margin: 0; }
+
+  @media (max-width: 800px) {
+    .sidebar-toggle {
+      display: inline-flex;
+      position: fixed;
+      top: 0.7rem;
+      left: 0.7rem;
+      z-index: 14;
+      align-items: center;
+      gap: 0.3rem;
+      border: 1px solid #3f3f3f;
+      background: rgba(20, 20, 20, 0.94);
+      color: #e5e5e5;
+      border-radius: 8px;
+      padding: 0.4em 0.65em;
+      font-size: 0.78rem;
+      cursor: pointer;
+      backdrop-filter: blur(3px);
+    }
+
+    .sidebar-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      border: none;
+      background: rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s;
+      z-index: 11;
+    }
+    .sidebar-backdrop.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(84vw, 300px);
+      transform: translateX(-100%);
+      transition: transform 0.18s ease;
+      border-right: 1px solid #2a2a2a;
+      box-shadow: 8px 0 28px rgba(0, 0, 0, 0.5);
+      overflow-y: auto;
+      padding-top: 0.7rem;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+
+    .sidebar-mobile-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #999;
+      margin-bottom: 0.3rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .sidebar-close {
+      border: 1px solid #444;
+      background: #202020;
+      color: #bbb;
+      border-radius: 6px;
+      width: 1.8rem;
+      height: 1.8rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0;
+      font-size: 0.85rem;
+    }
+
+    .main-area {
+      min-height: 100vh;
+      width: 100%;
+      padding-top: 2.8rem;
+    }
+  }
 </style>

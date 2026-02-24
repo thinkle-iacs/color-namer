@@ -6,9 +6,11 @@
   const mockGame: GameDoc = {
     status: "reveal",
     hostId: "player-1",
+    difficulty: "medium",
     pickerIndex: 0,
     roundNumber: 2,
     createdAt: Date.now(),
+    roundSeed: 123456,
     playerOrder: ["player-1", "player-2", "player-3", "player-4", "player-5"],
     players: {
       "player-1": {
