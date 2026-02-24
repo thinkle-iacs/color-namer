@@ -10,7 +10,7 @@
     computeResults,
     avatarColor,
   } from '$lib/game';
-  import { labToRgb } from '$lib/labToRgb';
+  import { labToRgb, generateColorOptions } from '$lib/labToRgb';
   import type { GameDoc } from '$lib/types';
   import LobbyView from '$lib/LobbyView.svelte';
   import PickingView from '$lib/PickingView.svelte';
@@ -44,6 +44,17 @@
       // Reset local picked color when a new round starts
       if (data.status === 'picking') {
         localPickedColor = null;
+      }
+      // Hard mode: recover the assigned color from seed if the picker refreshed
+      // during the guessing phase (Medium can't be recovered since picker chose one of 6)
+      if (
+        data.status === 'guessing' &&
+        data.difficulty === 'hard' &&
+        data.roundSeed !== null &&
+        data.playerOrder[data.pickerIndex] === playerId &&
+        !localPickedColor
+      ) {
+        localPickedColor = generateColorOptions(data.roundSeed, 1)[0];
       }
     });
 
@@ -171,7 +182,7 @@
           {game}
           {playerId}
           {gameId}
-          onStart={() => startGame(gameId)}
+          onStart={(difficulty) => startGame(gameId, difficulty)}
         />
       {:else if game.status === 'picking'}
         {#if amPicker}
@@ -180,6 +191,8 @@
             {playerId}
             onColorPicked={(color) => (localPickedColor = color)}
             pickedColor={localPickedColor}
+            difficulty={game.difficulty}
+            roundSeed={game.roundSeed}
           />
         {:else}
           <div class="waiting-screen">

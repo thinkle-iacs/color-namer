@@ -7,6 +7,8 @@ export type Color = {
 
 export type GameStatus = 'lobby' | 'picking' | 'guessing' | 'reveal';
 
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
 export type PlayerInfo = {
   name: string;
   score: number;
@@ -18,11 +20,15 @@ export type PlayerInfo = {
 export type GameDoc = {
   status: GameStatus;
   hostId: string;
+  difficulty: Difficulty;
   pickerIndex: number;           // index into playerOrder
   roundNumber: number;
   createdAt: number;
   playerOrder: string[];         // player IDs in turn order
   players: Record<string, PlayerInfo>;
+
+  // Seed for deterministic color generation (Medium/Hard modes)
+  roundSeed: number | null;
 
   // Set when picker submits their clue (picking → guessing)
   roundClue: string | null;

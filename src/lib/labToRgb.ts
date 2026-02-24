@@ -40,6 +40,48 @@ export function rgbToHsl(r: number, g: number, b: number): [number, number, numb
   return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
 }
 
+// Mulberry32 seeded PRNG — returns a function that yields floats in [0, 1)
+function mulberry32(seed: number) {
+  return function (): number {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Generate `count` varied, sRGB-gamut-safe LAB colors from a seed.
+// The same seed always produces the same colors (deterministic).
+export function generateColorOptions(seed: number, count: number): Array<{ lightness: number; a: number; b: number }> {
+  const rand = mulberry32(seed);
+  const colors: Array<{ lightness: number; a: number; b: number }> = [];
+  let attempts = 0;
+
+  while (colors.length < count && attempts < count * 30) {
+    attempts++;
+    const l = Math.round(25 + rand() * 55);   // L: 25–80
+    const a = Math.round(-65 + rand() * 130);  // a: −65 to 65
+    const b = Math.round(-65 + rand() * 130);  // b: −65 to 65
+
+    // Gamut check: convert to RGB and back; if round-trip drifts too much
+    // the original LAB was outside sRGB and got clamped.
+    const [r, g, bl] = labToRgb(l, a, b);
+    const [l2, a2, b2] = rgbToLab(r, g, bl);
+    if (Math.abs(l - l2) <= 4 && Math.abs(a - a2) <= 8 && Math.abs(b - b2) <= 8) {
+      colors.push({ lightness: l, a, b });
+    }
+  }
+
+  // Fallback: fill with neutral greys if we didn't get enough gamut-safe colors
+  while (colors.length < count) {
+    const step = colors.length;
+    colors.push({ lightness: 30 + step * 10, a: 0, b: 0 });
+  }
+
+  return colors;
+}
+
 export function rgbToLab(r: number, g: number, b: number) {
   let red = r / 255;
   let green = g / 255;
