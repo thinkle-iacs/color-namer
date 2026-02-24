@@ -2,7 +2,7 @@
   import ColorPicker from './ColorPicker.svelte';
   import ColorDescriber from './ColorDescriber.svelte';
   import { labToRgb, generateColorOptions } from './labToRgb';
-  import { submitClue } from './game';
+  import { savePickedColor, submitClue } from './game';
   import type { Color, Difficulty } from './types';
 
   const { gameId, playerId, onColorPicked, pickedColor, difficulty, roundSeed } = $props<{
@@ -36,14 +36,28 @@
   $effect(() => {
     if (hardColor && !pickedColor) {
       onColorPicked(hardColor);
+      void savePickedColor(gameId, hardColor);
+    }
+  });
+
+  // If picker refreshes mid-round and we recover a saved color, continue at clue step.
+  $effect(() => {
+    if (pickedColor && step === 'pick') {
+      step = 'clue';
     }
   });
 
   async function handleClue(clue: string) {
     if (!pickedColor) return;
     submitting = true;
+    await savePickedColor(gameId, pickedColor);
     await submitClue(gameId, clue);
     submitting = false;
+  }
+
+  function chooseColor(color: Color): void {
+    onColorPicked(color);
+    void savePickedColor(gameId, color);
   }
 
   function swatchRgb(c: Color): string {
@@ -90,7 +104,7 @@
               class="swatch-btn"
               style="background: rgb({swatchRgb(opt)});"
               onclick={() => {
-                onColorPicked(opt);
+                chooseColor(opt);
                 step = 'clue';
               }}
             ></button>
@@ -131,7 +145,7 @@
       <div class="picker-wrap">
         <ColorPicker
           onconfirm={(color) => {
-            onColorPicked(color);
+            chooseColor(color);
             step = 'clue';
           }}
         />

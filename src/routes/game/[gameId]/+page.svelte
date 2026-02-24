@@ -7,11 +7,12 @@
     subscribeToGame,
     startGame,
     nextRound,
+    setDifficulty,
     computeResults,
     avatarColor,
   } from '$lib/game';
   import { labToRgb, generateColorOptions } from '$lib/labToRgb';
-  import type { GameDoc } from '$lib/types';
+  import type { Difficulty, GameDoc } from '$lib/types';
   import LobbyView from '$lib/LobbyView.svelte';
   import PickingView from '$lib/PickingView.svelte';
   import GuessingView from '$lib/GuessingView.svelte';
@@ -26,10 +27,11 @@
   let playerName = $state('');
   let joinError = $state('');
   let joining = $state(false);
+  let changingDifficulty = $state(false);
   let unsub: (() => void) | null = null;
   let sidebarOpen = $state(false);
 
-  // The picker's chosen color — stored only in the picker's browser until reveal
+  // Local picker cache; canonical copy is persisted in game.roundPickedColor
   let localPickedColor = $state<import('$lib/types').Color | null>(null);
 
   onMount(async () => {
@@ -37,22 +39,31 @@
 
     // Subscribe to game updates
     unsub = subscribeToGame(gameId, (data) => {
-      const wasInGame = game !== null && game.players[playerId];
+      const prevGame = game;
+      const wasInGame = prevGame !== null && prevGame.players[playerId];
       game = data;
       if (wasInGame || data.players[playerId]) {
         joined = true;
       }
-      // Reset local picked color when a new round starts
-      if (data.status === 'picking') {
+
+      // Reset local picked color only when round number changes.
+      if (prevGame?.roundNumber !== data.roundNumber) {
         localPickedColor = null;
       }
-      // Hard mode: recover the assigned color from seed if the picker refreshed
-      // during the guessing phase (Medium can't be recovered since picker chose one of 6)
+
+      const amCurrentPicker = data.playerOrder[data.pickerIndex] === playerId;
+
+      // Recover from persisted picked color if present.
+      if (amCurrentPicker && data.roundPickedColor && !localPickedColor) {
+        localPickedColor = data.roundPickedColor;
+      }
+
+      // Hard-mode fallback for older rounds (before picked-color persistence).
       if (
+        amCurrentPicker &&
         data.status === 'guessing' &&
         data.difficulty === 'hard' &&
         data.roundSeed !== null &&
-        data.playerOrder[data.pickerIndex] === playerId &&
         !localPickedColor
       ) {
         localPickedColor = generateColorOptions(data.roundSeed, 1)[0];
@@ -86,6 +97,7 @@
     game ? game.playerOrder[game.pickerIndex] : null
   );
   let amPicker = $derived(pickerPlayerId === playerId);
+  let amHost = $derived(game?.hostId === playerId);
   let allGuessersSubmitted = $derived(
     game
       ? game.playerOrder
@@ -105,6 +117,17 @@
 
   function shareUrl() {
     return `${window.location.origin}/game/${gameId}`;
+  }
+
+  async function handleDifficultyChange(difficulty: Difficulty): Promise<void> {
+    if (!game || !amHost) return;
+    if (game.difficulty === difficulty || game.status === 'picking') return;
+    changingDifficulty = true;
+    try {
+      await setDifficulty(gameId, difficulty);
+    } finally {
+      changingDifficulty = false;
+    }
   }
 </script>
 
@@ -187,6 +210,31 @@
       <div class="round-info">
         Round {game.roundNumber || '—'}
       </div>
+
+      {#if amHost}
+        <div class="difficulty-panel">
+          <div class="difficulty-label">Difficulty</div>
+          <div class="difficulty-buttons">
+            {#each ['easy', 'medium', 'hard'] as d}
+              <button
+                class="diff-btn"
+                class:active={game.difficulty === d}
+                disabled={changingDifficulty || game.status === 'picking'}
+                onclick={() => handleDifficultyChange(d as Difficulty)}
+              >
+                {d}
+              </button>
+            {/each}
+          </div>
+          <div class="difficulty-note">
+            {#if game.status === 'picking'}
+              Locked while picker is choosing a color
+            {:else}
+              Applies to the next picking phase
+            {/if}
+          </div>
+        </div>
+      {/if}
 
       <ul class="scoreboard">
         {#each sortedPlayers as p}
@@ -395,6 +443,57 @@
     color: #777;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .difficulty-panel {
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
+    padding: 0.55rem;
+    background: #171717;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .difficulty-label {
+    font-size: 0.68rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+  }
+  .difficulty-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.3rem;
+  }
+  .diff-btn {
+    border: 1px solid #444;
+    background: #1f1f1f;
+    color: #b9b9b9;
+    border-radius: 7px;
+    padding: 0.3em 0.4em;
+    font-size: 0.75rem;
+    text-transform: capitalize;
+    cursor: pointer;
+  }
+  .diff-btn:hover:not([disabled]) {
+    background: #282828;
+    border-color: #5a5a5a;
+    color: #ececec;
+  }
+  .diff-btn.active {
+    border-color: #6e9ff4;
+    background: #223049;
+    color: #eff5ff;
+    font-weight: 600;
+  }
+  .diff-btn[disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .difficulty-note {
+    font-size: 0.68rem;
+    color: #707070;
+    line-height: 1.2;
   }
 
   .scoreboard {

@@ -38,9 +38,48 @@ export function colorDistance(c1: Color, c2: Color): number {
 
 // ── Scoring ────────────────────────────────────────────────────────────────────
 
-// Guesser score: 100 at distance 0, 0 at distance ~67
+export const GUESSER_MAX_SCORE = 500;
+export const GUESSER_MAX_DISTANCE = 55;
+const SCORE_CURVE_MIDPOINT = 17;
+const SCORE_CURVE_STEEPNESS = 5.5;
+
+function sigmoid(distance: number): number {
+  return 1 / (1 + Math.exp((distance - SCORE_CURVE_MIDPOINT) / SCORE_CURVE_STEEPNESS));
+}
+
+// Smooth S-curve score:
+// - near-plateau for very close guesses
+// - steeper middle drop
+// - soft tail to 0 by GUESSER_MAX_DISTANCE
+export function guesserScoreContinuous(distance: number): number {
+  if (distance >= GUESSER_MAX_DISTANCE) return 0;
+  const top = sigmoid(0);
+  const bottom = sigmoid(GUESSER_MAX_DISTANCE);
+  const t = (sigmoid(Math.max(0, distance)) - bottom) / (top - bottom);
+  const clamped = Math.max(0, Math.min(1, t));
+  return GUESSER_MAX_SCORE * clamped;
+}
+
+// Inverse lookup for visualization rings (score -> distance)
+export function distanceForGuesserScore(points: number): number {
+  const target = Math.max(0, Math.min(GUESSER_MAX_SCORE, points));
+  if (target >= GUESSER_MAX_SCORE) return 0;
+  if (target <= 0) return GUESSER_MAX_DISTANCE;
+
+  let low = 0;
+  let high = GUESSER_MAX_DISTANCE;
+  for (let i = 0; i < 28; i++) {
+    const mid = (low + high) / 2;
+    const score = guesserScoreContinuous(mid);
+    if (score > target) low = mid;
+    else high = mid;
+  }
+  return (low + high) / 2;
+}
+
+// Rounded displayed score used in scoring
 export function guesserScore(distance: number): number {
-  return Math.max(0, Math.round(100 - distance * 1.5));
+  return Math.round(guesserScoreContinuous(distance));
 }
 
 // Picker score: average of all guesser scores, halved
@@ -93,6 +132,7 @@ export async function createGame(playerId: string, playerName: string): Promise<
     roundSeed: null,
     roundClue: null,
     roundGuesses: {},
+    roundPickedColor: null,
     roundTarget: null,
   };
   await setDoc(doc(db, 'games', gameId), gameDoc);
@@ -139,11 +179,19 @@ export async function startGame(gameId: string, difficulty: Difficulty): Promise
     roundSeed: Math.floor(Math.random() * 2 ** 31),
     roundClue: null,
     roundGuesses: {},
+    roundPickedColor: null,
     roundTarget: null,
   });
 }
 
-// Picker submits their 2-word clue. Color stays in picker's browser until reveal.
+// Picker's chosen target color (persist immediately so refreshes are safe)
+export async function savePickedColor(gameId: string, color: Color): Promise<void> {
+  await updateDoc(doc(db, 'games', gameId), {
+    roundPickedColor: color,
+  });
+}
+
+// Picker submits their 2-word clue.
 export async function submitClue(gameId: string, clue: string): Promise<void> {
   await updateDoc(doc(db, 'games', gameId), {
     status: 'guessing' as GameStatus,
@@ -166,6 +214,7 @@ export async function revealTarget(gameId: string, target: Color): Promise<void>
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const data = snap.data() as GameDoc;
+  if (data.status === 'reveal') return;
 
   // Calculate and apply score deltas
   const results = computeResults({ ...data, roundTarget: target });
@@ -206,7 +255,16 @@ export async function nextRound(gameId: string): Promise<void> {
     roundSeed: Math.floor(Math.random() * 2 ** 31),
     roundClue: null,
     roundGuesses: {},
+    roundPickedColor: null,
     roundTarget: null,
+  });
+}
+
+// Host can switch difficulty between rounds / phases.
+// UI should prevent changing during active picking to avoid disrupting the picker.
+export async function setDifficulty(gameId: string, difficulty: Difficulty): Promise<void> {
+  await updateDoc(doc(db, 'games', gameId), {
+    difficulty,
   });
 }
 

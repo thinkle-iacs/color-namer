@@ -1,23 +1,23 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { createGame, getOrCreatePlayerId } from '$lib/game';
+  import { goto } from "$app/navigation";
+  import { createGame, getOrCreatePlayerId } from "$lib/game";
 
-  let playerName = $state('');
-  let joinCode = $state('');
-  let mode = $state<'home' | 'create' | 'join'>('home');
+  let playerName = $state("");
+  let joinCode = $state("");
+  let mode = $state<"home" | "create" | "join">("home");
   let creating = $state(false);
-  let errorMsg = $state('');
+  let errorMsg = $state("");
 
   async function handleCreate() {
     if (!playerName.trim()) return;
     creating = true;
-    errorMsg = '';
+    errorMsg = "";
     try {
       const playerId = getOrCreatePlayerId();
       const gameId = await createGame(playerId, playerName.trim());
       goto(`/game/${gameId}`);
     } catch (e) {
-      errorMsg = 'Could not create game. Check your connection.';
+      errorMsg = "Could not create game. Check your connection.";
       creating = false;
     }
   }
@@ -35,14 +35,16 @@
 
 <main>
   <div class="hero">
-    <h1 class="title">Crayon<br/>Namer</h1>
-    <p class="tagline">Pick a color. Give a clue. Stump your friends.</p>
+    <h1 class="title">Crayon<br />Namer</h1>
+    <p class="tagline">Name a color. See if your friends can guess it.</p>
   </div>
 
-  {#if mode === 'home'}
+  {#if mode === "home"}
     <div class="actions">
-      <button class="big" onclick={() => (mode = 'create')}>Create game</button>
-      <button class="big secondary" onclick={() => (mode = 'join')}>Join game</button>
+      <button class="big" onclick={() => (mode = "create")}>Create game</button>
+      <button class="big secondary" onclick={() => (mode = "join")}
+        >Join game</button
+      >
     </div>
   {:else}
     <div class="form-card">
@@ -57,7 +59,7 @@
         />
       </label>
 
-      {#if mode === 'join'}
+      {#if mode === "join"}
         <label>
           Game code
           <input
@@ -75,13 +77,13 @@
       {/if}
 
       <div class="form-buttons">
-        {#if mode === 'create'}
+        {#if mode === "create"}
           <button
             class="big"
             disabled={!playerName.trim() || creating}
             onclick={handleCreate}
           >
-            {creating ? 'Creating…' : 'Create & enter lobby'}
+            {creating ? "Creating…" : "Create & enter lobby"}
           </button>
         {:else}
           <button
@@ -92,7 +94,13 @@
             Join game
           </button>
         {/if}
-        <button class="link" onclick={() => { mode = 'home'; errorMsg = ''; }}>
+        <button
+          class="link"
+          onclick={() => {
+            mode = "home";
+            errorMsg = "";
+          }}
+        >
           ← Back
         </button>
       </div>
@@ -101,12 +109,17 @@
 </main>
 
 <style>
-  :global(*, *::before, *::after) { box-sizing: border-box; }
+  :global(*, *::before, *::after) {
+    box-sizing: border-box;
+  }
   :global(body) {
     margin: 0;
     background: #111;
     color: #f0f0f0;
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      sans-serif;
   }
 
   main {
@@ -119,7 +132,9 @@
     padding: 2rem;
   }
 
-  .hero { text-align: center; }
+  .hero {
+    text-align: center;
+  }
 
   .title {
     font-size: clamp(3rem, 12vw, 6rem);
@@ -177,7 +192,9 @@
     outline: none;
     width: 100%;
   }
-  input:focus { border-color: #888; }
+  input:focus {
+    border-color: #888;
+  }
 
   .form-buttons {
     display: flex;
@@ -197,8 +214,13 @@
     font-weight: 700;
     transition: filter 0.15s;
   }
-  button.big:hover:not([disabled]) { filter: brightness(1.15); }
-  button.big[disabled] { opacity: 0.4; cursor: not-allowed; }
+  button.big:hover:not([disabled]) {
+    filter: brightness(1.15);
+  }
+  button.big[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
   button.big.secondary {
     background: #333;
     color: #ddd;
@@ -213,7 +235,9 @@
     text-align: center;
     padding: 0.3em;
   }
-  button.link:hover { color: #ccc; }
+  button.link:hover {
+    color: #ccc;
+  }
 
   .error {
     color: #f66;

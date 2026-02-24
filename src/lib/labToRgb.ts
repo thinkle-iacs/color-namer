@@ -1,4 +1,4 @@
-export function labToRgb(l: number, a: number, b: number) {
+function labToRgbUnitUnclamped(l: number, a: number, b: number): [number, number, number] {
   let y = (l + 16) / 116;
   let x = a / 500 + y;
   let z = y - b / 200;
@@ -19,6 +19,20 @@ export function labToRgb(l: number, a: number, b: number) {
     green > 0.0031308 ? 1.055 * green ** (1 / 2.4) - 0.055 : 12.92 * green;
   blue = blue > 0.0031308 ? 1.055 * blue ** (1 / 2.4) - 0.055 : 12.92 * blue;
 
+  return [red, green, blue];
+}
+
+export function isLabDisplayable(l: number, a: number, b: number): boolean {
+  const [red, green, blue] = labToRgbUnitUnclamped(l, a, b);
+  return (
+    red >= 0 && red <= 1 &&
+    green >= 0 && green <= 1 &&
+    blue >= 0 && blue <= 1
+  );
+}
+
+export function labToRgb(l: number, a: number, b: number) {
+  const [red, green, blue] = labToRgbUnitUnclamped(l, a, b);
   return [
     Math.max(0, Math.min(255, Math.round(red * 255))),
     Math.max(0, Math.min(255, Math.round(green * 255))),
@@ -40,6 +54,37 @@ export function rgbToHsl(r: number, g: number, b: number): [number, number, numb
   return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
 }
 
+export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(100, s)) / 100;
+  const light = Math.max(0, Math.min(100, l)) / 100;
+
+  if (sat === 0) {
+    const v = Math.round(light * 255);
+    return [v, v, v];
+  }
+
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+  const hk = hue / 360;
+
+  function channel(t0: number): number {
+    let t = t0;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+
+  return [
+    Math.round(channel(hk + 1 / 3) * 255),
+    Math.round(channel(hk) * 255),
+    Math.round(channel(hk - 1 / 3) * 255),
+  ];
+}
+
 // Mulberry32 seeded PRNG — returns a function that yields floats in [0, 1)
 function mulberry32(seed: number) {
   return function (): number {
@@ -52,6 +97,12 @@ function mulberry32(seed: number) {
 }
 
 type LabColor = { lightness: number; a: number; b: number };
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
 
 function labDistance(c1: LabColor, c2: LabColor): number {
   const dl = c1.lightness - c2.lightness;
@@ -87,6 +138,43 @@ function isGamutSafe(color: LabColor): boolean {
     Math.abs(color.a - a2) <= 9 &&
     Math.abs(color.b - b2) <= 9
   );
+}
+
+// Project an arbitrary LAB color to a nearby sRGB-displayable LAB color.
+// Keeps lightness and hue direction whenever possible, reducing chroma first.
+export function normalizeLabToGamut(color: LabColor): LabColor {
+  const lightness = clamp(Math.round(color.lightness), 0, 100);
+  const a = clamp(color.a, -128, 127);
+  const b = clamp(color.b, -128, 127);
+  const candidate: LabColor = { lightness, a: Math.round(a), b: Math.round(b) };
+  if (isGamutSafe(candidate)) return candidate;
+
+  const hue = Math.atan2(b, a);
+  const chroma = Math.sqrt(a * a + b * b);
+  let low = 0;
+  let high = chroma;
+
+  for (let i = 0; i < 18; i++) {
+    const mid = (low + high) / 2;
+    const projected: LabColor = {
+      lightness,
+      a: Math.round(mid * Math.cos(hue)),
+      b: Math.round(mid * Math.sin(hue)),
+    };
+    if (isGamutSafe(projected)) low = mid;
+    else high = mid;
+  }
+
+  const best: LabColor = {
+    lightness,
+    a: Math.round(low * Math.cos(hue)),
+    b: Math.round(low * Math.sin(hue)),
+  };
+
+  // Snap to actual rendered LAB so follow-up zoom centers match what users see.
+  const [r, g, bl] = labToRgb(best.lightness, best.a, best.b);
+  const [l2, a2, b2] = rgbToLab(r, g, bl);
+  return { lightness: l2, a: a2, b: b2 };
 }
 
 // Generate `count` varied, sRGB-gamut-safe LAB colors from a seed.

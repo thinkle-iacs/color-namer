@@ -1,6 +1,12 @@
 <script lang="ts">
   import { labToRgb, rgbToHsl } from './labToRgb';
-  import { computeResults, pickerScore } from './game';
+  import {
+    computeResults,
+    pickerScore,
+    distanceForGuesserScore,
+    GUESSER_MAX_SCORE,
+    GUESSER_MAX_DISTANCE,
+  } from './game';
   import type { Color, GameDoc } from './types';
 
   const { game, gameId, playerId, amPicker, onNextRound } = $props<{
@@ -20,7 +26,9 @@
 
   const LAB_LIMIT_A = 110;
   const LAB_LIMIT_B = 110;
-  const MAX_DISPLAY_DISTANCE = 120;
+  const MAX_DISPLAY_DISTANCE = GUESSER_MAX_DISTANCE;
+  const SCORE_RING_POINTS = [350, 100, 25] as const;
+  const RING_SEGMENTS = 64;
   const BASE_WORLD_SCALE = 1.35;
   const CAMERA_Z = 4;
   const FOCAL_LENGTH = 165;
@@ -46,6 +54,22 @@
     to: SpacePoint;
     fromColor: string;
     toColor: string;
+  };
+
+  type ScoreRing = {
+    id: string;
+    path: string;
+    color: string;
+    width: number;
+    opacity: number;
+  };
+
+  type ScoreLabel = {
+    id: string;
+    sx: number;
+    sy: number;
+    text: string;
+    color: string;
   };
 
   let yaw = $state(0.5);
@@ -149,6 +173,21 @@
     };
   }
 
+  function labToVecUnbounded(lightness: number, a: number, b: number): Vec3 {
+    return {
+      x: a / LAB_LIMIT_A,
+      y: (lightness - 50) / 50,
+      z: b / LAB_LIMIT_B,
+    };
+  }
+
+  function pointsToClosedPath(points: SpacePoint[]): string {
+    if (points.length === 0) return '';
+    const parts = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.sx.toFixed(2)} ${p.sy.toFixed(2)}`);
+    parts.push('Z');
+    return parts.join(' ');
+  }
+
   function vecToLab(point: Vec3): Color {
     return {
       lightness: Math.round(clamp(((point.y + 1) / 2) * 100, 0, 100)),
@@ -200,6 +239,67 @@
       { x: 0, y: 0 }
     );
     return { x: sum.x / points.length, y: sum.y / points.length };
+  });
+
+  function ringPath(distance: number, plane: 'ab' | 'al' | 'bl'): string {
+    const projected: SpacePoint[] = [];
+    for (let i = 0; i < RING_SEGMENTS; i++) {
+      const t = (i / RING_SEGMENTS) * Math.PI * 2;
+      let lightness = target.lightness;
+      let a = target.a;
+      let b = target.b;
+
+      if (plane === 'ab') {
+        a += Math.cos(t) * distance;
+        b += Math.sin(t) * distance;
+      } else if (plane === 'al') {
+        a += Math.cos(t) * distance;
+        lightness += Math.sin(t) * distance;
+      } else {
+        b += Math.cos(t) * distance;
+        lightness += Math.sin(t) * distance;
+      }
+
+      projected.push(projectPoint(labToVecUnbounded(lightness, a, b)));
+    }
+    return pointsToClosedPath(projected);
+  }
+
+  let scoreRings = $derived.by((): ScoreRing[] => {
+    const rings: ScoreRing[] = [];
+    const planes: Array<'ab' | 'al' | 'bl'> = ['ab', 'al', 'bl'];
+    for (const points of SCORE_RING_POINTS) {
+      const distance = distanceForGuesserScore(points);
+      const strength = points / GUESSER_MAX_SCORE;
+      const color = `hsl(${Math.round(strength * 120)}, 85%, 60%)`;
+      for (const plane of planes) {
+        rings.push({
+          id: `ring-${points}-${plane}`,
+          path: ringPath(distance, plane),
+          color,
+          width: plane === 'ab' ? 1.4 : 1,
+          opacity: plane === 'ab' ? 0.62 : 0.34,
+        });
+      }
+    }
+    return rings;
+  });
+
+  let scoreRingLabels = $derived.by((): ScoreLabel[] => {
+    return SCORE_RING_POINTS.map((points) => {
+      const distance = distanceForGuesserScore(points);
+      const labelPoint = projectPoint(
+        labToVecUnbounded(target.lightness + distance, target.a, target.b)
+      );
+      const color = `hsl(${Math.round((points / GUESSER_MAX_SCORE) * 120)}, 85%, 70%)`;
+      return {
+        id: `ring-label-${points}`,
+        sx: labelPoint.sx + 5,
+        sy: labelPoint.sy - 2,
+        text: `${points} pts`,
+        color,
+      };
+    });
   });
 
   type ColorMode = 'lab' | 'rgb' | 'hsl';
@@ -330,6 +430,14 @@
           <line class="axis-guide axis-b" x1={cubeProjected[0].sx} y1={cubeProjected[0].sy} x2={cubeProjected[4].sx} y2={cubeProjected[4].sy} />
           <line class="axis-guide axis-l" x1={cubeProjected[0].sx} y1={cubeProjected[0].sy} x2={cubeProjected[3].sx} y2={cubeProjected[3].sy} />
 
+          {#each scoreRings as ring}
+            <path
+              class="score-ring"
+              d={ring.path}
+              style="stroke: {ring.color}; stroke-width: {ring.width}; opacity: {ring.opacity};"
+            />
+          {/each}
+
           {#each resultRows as r}
             <line
               class="distance-line"
@@ -361,12 +469,22 @@
           />
           <text class="target-label" x={targetPoint.sx + 11} y={targetPoint.sy + 4}>Target</text>
 
+          {#each scoreRingLabels as label}
+            <text
+              class="score-ring-label"
+              x={label.sx}
+              y={label.sy}
+              style="fill: {label.color};"
+            >{label.text}</text>
+          {/each}
+
           <text class="axis-label axis-a" x={cubeProjected[1].sx + 6} y={cubeProjected[1].sy + 16}>a*</text>
           <text class="axis-label axis-b" x={cubeProjected[4].sx - 8} y={cubeProjected[4].sy + 16}>b*</text>
           <text class="axis-label axis-l" x={cubeProjected[3].sx - 6} y={cubeProjected[3].sy - 8}>L*</text>
         </g>
       </svg>
       <p class="space-note">Drag to rotate the LAB cube. Edge gradients show how color shifts through space.</p>
+      <p class="space-note">Concentric score rings mark approximate 350/100/25-point distance zones around the target.</p>
       <p class="space-note">Each player line is the LAB distance from a guess to the target.</p>
     </div>
   </div>
@@ -582,6 +700,20 @@
   .distance-line {
     stroke-width: 1.8;
     opacity: 0.8;
+  }
+  .score-ring {
+    fill: none;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .score-ring-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    paint-order: stroke;
+    stroke: #0f0f0f;
+    stroke-width: 2px;
   }
   .guess-point {
     stroke-width: 2.3;

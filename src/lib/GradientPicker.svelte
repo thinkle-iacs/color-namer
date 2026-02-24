@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { labToRgb } from "./labToRgb";
+  import { hslToRgb, labToRgb, rgbToHsl, rgbToLab } from "./labToRgb";
 
   const {
     center = { lightness: 50, a: 0, b: 0 },
@@ -8,12 +8,14 @@
     selection = null,
     selectionRange = null,
     onselect,
+    onlightnesschange,
   } = $props<{
     center: { lightness: number; a: number; b: number };
     zoom: number; // 1 = full LAB space, 2 = half, etc.
     selection?: { lightness: number; a: number; b: number } | null;
     selectionRange?: number | null; // LAB half-range for the next zoom preview
     onselect: (selectedColor: { lightness: number; a: number; b: number }) => void;
+    onlightnesschange?: (lightness: number) => void;
   }>();
 
   const SLIDER_W = 36;
@@ -25,12 +27,45 @@
 
   // Canvas fills available width minus the lightness slider
   let canvasSize = $derived(Math.max(80, containerWidth - SLIDER_W - 2));
-  let currentRange = $derived(128 / zoom);
+  let currentLabRange = $derived(128 / zoom);
+  let hueRange = $derived(180 / zoom);
+  let satRange = $derived(50 / zoom);
+  let satMin = $derived(0);
+  let satMax = $derived.by(() => clamp(centerHsl.s + satRange, 12, 100));
+  let satSpan = $derived(Math.max(1, satMax - satMin));
+
+  function clamp(v: number, min: number, max: number): number {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+  }
+
+  function wrapHue(h: number): number {
+    const wrapped = h % 360;
+    return wrapped < 0 ? wrapped + 360 : wrapped;
+  }
+
+  function shortestHueDelta(target: number, from: number): number {
+    let d = wrapHue(target) - wrapHue(from);
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    return d;
+  }
+
+  let centerHsl = $derived.by(() => {
+    if (zoom === 1) return { h: 180, s: 50, l: 50 };
+    const [r, g, b] = labToRgb(center.lightness, center.a, center.b);
+    const [h, s, l] = rgbToHsl(r, g, b);
+    return { h, s, l };
+  });
 
   let selectionPoint = $derived.by(() => {
     if (!selection) return null;
-    const xPct = ((selection.a - (center.a - currentRange)) / (currentRange * 2)) * 100;
-    const yPct = ((center.b + currentRange - selection.b) / (currentRange * 2)) * 100;
+    const [sr, sg, sb] = labToRgb(selection.lightness, selection.a, selection.b);
+    const [selHue, selSat] = rgbToHsl(sr, sg, sb);
+    const hueDelta = shortestHueDelta(selHue, centerHsl.h);
+    const xPct = ((hueDelta + hueRange) / (hueRange * 2)) * 100;
+    const yPct = ((satMax - selSat) / satSpan) * 100;
     return {
       x: Math.max(0, Math.min(100, xPct)),
       y: Math.max(0, Math.min(100, yPct)),
@@ -39,7 +74,7 @@
 
   let selectionBox = $derived.by(() => {
     if (!selectionPoint || selectionRange === null) return null;
-    const sizePct = (selectionRange / currentRange) * 100;
+    const sizePct = (selectionRange / currentLabRange) * 100;
     const left = Math.max(0, Math.min(100 - sizePct, selectionPoint.x - sizePct / 2));
     const top = Math.max(0, Math.min(100 - sizePct, selectionPoint.y - sizePct / 2));
     return { sizePct, left, top };
@@ -83,11 +118,11 @@
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
 
-    const range = 128 / zoom;
-    const a = center.a - range + (x / rect.width) * (range * 2);
-    const b = center.b + range - (y / rect.height) * (range * 2);
-
-    onselect({ lightness, a: Math.round(a), b: Math.round(b) });
+    const hue = wrapHue(centerHsl.h - hueRange + (x / rect.width) * (hueRange * 2));
+    const sat = clamp(satMax - (y / rect.height) * satSpan, 0, 100);
+    const [r, g, b] = hslToRgb(hue, sat, lightness);
+    const [l2, a2, b2] = rgbToLab(r, g, b);
+    onselect({ lightness: l2, a: a2, b: b2 });
   }
 
   function drawLabGradient() {
@@ -100,13 +135,11 @@
     const imageData = ctx.getImageData(0, 0, w, h);
     const data = imageData.data;
 
-    const range = 128 / zoom;
-
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const a = center.a - range + (x / w) * (range * 2);
-        const b = center.b + range - (y / h) * (range * 2);
-        const rgb = labToRgb(lightness, a, b);
+        const hue = wrapHue(centerHsl.h - hueRange + (x / w) * (hueRange * 2));
+        const sat = clamp(satMax - (y / h) * satSpan, 0, 100);
+        const rgb = hslToRgb(hue, sat, lightness);
 
         const index = (y * w + x) * 4;
         data[index] = rgb[0];
@@ -125,7 +158,26 @@
 
   // Redraw when canvas display size changes
   $effect(() => {
-    canvasSize; // track as reactive dependency
+    centerHsl.h;
+    centerHsl.s;
+    centerHsl.l;
+    lightness = centerHsl.l;
+  });
+
+  $effect(() => {
+    lightness;
+    onlightnesschange?.(lightness);
+  });
+
+  $effect(() => {
+    canvasSize;
+    lightness;
+    centerHsl.h;
+    centerHsl.s;
+    hueRange;
+    satRange;
+    satMax;
+    satSpan;
     drawLabGradient();
   });
 </script>
@@ -162,12 +214,11 @@
       height="500"
       onclick={handleClickOnGradient}
     ></canvas>
-    <!-- b axis: top = +b (yellow), bottom = −b (blue) -->
-    <span class="axis top">+b yellow</span>
-    <span class="axis bottom">−b blue</span>
-    <!-- a axis: left = −a (green), right = +a (red) -->
-    <span class="axis left">−a green</span>
-    <span class="axis right">+a red</span>
+    <!-- Saturation / hue guidance -->
+    <span class="axis top">high saturation</span>
+    <span class="axis bottom">low saturation</span>
+    <span class="axis left">hue −</span>
+    <span class="axis right">hue +</span>
 
     {#if selectionBox}
       <div

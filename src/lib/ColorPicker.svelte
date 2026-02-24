@@ -1,11 +1,13 @@
 <script lang="ts">
   import GradientPicker from './GradientPicker.svelte';
   import GridColorPicker from './GridColorPicker.svelte';
-  import { labToRgb, rgbToLab } from './labToRgb';
+  import HueLightnessPicker from './HueLightnessPicker.svelte';
+  import { labToRgb } from './labToRgb';
   import type { Color } from './types';
 
   const INITIAL_COLOR: Color = { lightness: 50, a: 0, b: 0 };
-  const MAX_ZOOM = 3;
+  const MAX_BROAD_ZOOM = 2;
+  const FINAL_STEP = 3;
 
   const { onconfirm } = $props<{ onconfirm: (color: Color) => void }>();
 
@@ -13,12 +15,35 @@
   let zoom = $state(1);
   let centers = $state<Color[]>([INITIAL_COLOR]);
   let pendingSelection = $state<Color | null>(null);
+  let broadPreviewLightnessOverride = $state<number | null>(null);
   let narrowCenter = $state<Color>(INITIAL_COLOR);
+  let pendingNarrowSelection = $state<Color | null>(null);
+  let narrowPreviewLightnessOverride = $state<number | null>(null);
 
   let currentCenter = $derived(centers[zoom - 1] ?? INITIAL_COLOR);
-  let previewColor = $derived(pendingSelection ?? currentCenter);
+  let broadDisplaySelection = $derived(pendingSelection ?? currentCenter);
+  let broadPreviewBaseColor = $derived(pendingSelection ?? currentCenter);
+  let previewColor = $derived.by(() => {
+    if (broadPreviewLightnessOverride === null) return broadPreviewBaseColor;
+    return {
+      ...broadPreviewBaseColor,
+      lightness: broadPreviewLightnessOverride,
+    };
+  });
   let previewRgb = $derived(labToRgb(previewColor.lightness, previewColor.a, previewColor.b));
-  let nextSelectionRange = $derived(zoom < MAX_ZOOM ? 128 / (zoom + 1) : null);
+  let nextSelectionRange = $derived(zoom < MAX_BROAD_ZOOM ? 128 / (zoom + 1) : null);
+  let narrowDisplaySelection = $derived(pendingNarrowSelection ?? narrowCenter);
+  let narrowPreviewBaseColor = $derived(pendingNarrowSelection ?? narrowCenter);
+  let narrowPreviewColor = $derived.by(() => {
+    if (narrowPreviewLightnessOverride === null) return narrowPreviewBaseColor;
+    return {
+      ...narrowPreviewBaseColor,
+      lightness: narrowPreviewLightnessOverride,
+    };
+  });
+  let narrowPreviewRgb = $derived(
+    labToRgb(narrowPreviewColor.lightness, narrowPreviewColor.a, narrowPreviewColor.b)
+  );
 
   function setCenterForZoom(stage: number, color: Color): void {
     const next = [...centers];
@@ -26,14 +51,9 @@
     centers = next;
   }
 
-  function normalizeToRendered(c: Color): Color {
-    const [r, g, b] = labToRgb(c.lightness, c.a, c.b);
-    const [l2, a2, b2] = rgbToLab(r, g, b);
-    return { lightness: l2, a: a2, b: b2 };
-  }
-
   function handleBroadPick(c: Color): void {
-    pendingSelection = normalizeToRendered(c);
+    pendingSelection = c;
+    broadPreviewLightnessOverride = c.lightness;
   }
 
   function goNext(): void {
@@ -41,29 +61,36 @@
     const selected = pendingSelection;
     setCenterForZoom(zoom, selected);
 
-    if (zoom < MAX_ZOOM) {
+    if (zoom < MAX_BROAD_ZOOM) {
       setCenterForZoom(zoom + 1, selected);
       zoom += 1;
-      pendingSelection = null;
+      pendingSelection = selected;
+      broadPreviewLightnessOverride = null;
       return;
     }
 
     narrowCenter = selected;
     mode = 'narrow';
+    pendingNarrowSelection = null;
+    narrowPreviewLightnessOverride = selected.lightness;
     pendingSelection = null;
   }
 
   function goBack(): void {
     if (mode === 'narrow') {
       mode = 'broad';
-      zoom = MAX_ZOOM;
-      setCenterForZoom(MAX_ZOOM, narrowCenter);
+      zoom = MAX_BROAD_ZOOM;
+      setCenterForZoom(MAX_BROAD_ZOOM, narrowCenter);
       pendingSelection = narrowCenter;
+      pendingNarrowSelection = null;
+      broadPreviewLightnessOverride = narrowCenter.lightness;
+      narrowPreviewLightnessOverride = null;
       return;
     }
     if (zoom <= 1) return;
     zoom -= 1;
     pendingSelection = centers[zoom - 1] ?? null;
+    broadPreviewLightnessOverride = null;
   }
 
   function reset(): void {
@@ -71,7 +98,28 @@
     zoom = 1;
     centers = [INITIAL_COLOR];
     pendingSelection = null;
+    broadPreviewLightnessOverride = null;
     narrowCenter = INITIAL_COLOR;
+    pendingNarrowSelection = null;
+    narrowPreviewLightnessOverride = null;
+  }
+
+  function handleBroadPreviewLightness(lightness: number): void {
+    broadPreviewLightnessOverride = lightness;
+  }
+
+  function handleNarrowPick(c: Color): void {
+    pendingNarrowSelection = c;
+    narrowPreviewLightnessOverride = c.lightness;
+  }
+
+  function handleNarrowPreviewLightness(lightness: number): void {
+    narrowPreviewLightnessOverride = lightness;
+  }
+
+  function confirmNarrowSelection(): void {
+    if (!pendingNarrowSelection) return;
+    onconfirm(pendingNarrowSelection);
   }
 </script>
 
@@ -79,18 +127,18 @@
   {#if mode === 'broad'}
     <div class="picker-topbar">
       <p class="stage">
-        Step {zoom}/{MAX_ZOOM}
-        {#if zoom === MAX_ZOOM}
-          <span>Final zoom</span>
+        Step {zoom}/{FINAL_STEP}
+        {#if zoom === 1}
+          <span>Pick a hue + brightness region</span>
         {:else}
-          <span>Pick a region, then continue</span>
+          <span>Refine hue/saturation, then continue</span>
         {/if}
       </p>
       <div class="actions">
         <button class="ghost" onclick={reset}>Restart</button>
         <button class="ghost" onclick={goBack} disabled={zoom === 1}>Back</button>
         <button class="next" onclick={goNext} disabled={!pendingSelection}>
-          {zoom === MAX_ZOOM ? 'Fine tune' : 'Next'}
+          {zoom === MAX_BROAD_ZOOM ? 'Fine tune' : 'Next'}
         </button>
       </div>
     </div>
@@ -100,27 +148,54 @@
       <span>L {previewColor.lightness} a {previewColor.a} b {previewColor.b}</span>
     </div>
 
-    {#key `${zoom}-${currentCenter.lightness}-${currentCenter.a}-${currentCenter.b}`}
-      <GradientPicker
+    {#if zoom === 1}
+      <HueLightnessPicker
         center={currentCenter}
-        {zoom}
-        selection={pendingSelection}
-        selectionRange={nextSelectionRange}
+        selection={broadDisplaySelection}
         onselect={handleBroadPick}
       />
-    {/key}
+    {:else}
+      {#key `${zoom}-${currentCenter.lightness}-${currentCenter.a}-${currentCenter.b}`}
+        <GradientPicker
+          center={currentCenter}
+          {zoom}
+          selection={broadDisplaySelection}
+          selectionRange={nextSelectionRange}
+          onlightnesschange={handleBroadPreviewLightness}
+          onselect={handleBroadPick}
+        />
+      {/key}
+    {/if}
   {:else}
     <div class="picker-topbar">
       <p class="stage">
-        Fine tune selection
+        Step {FINAL_STEP}/{FINAL_STEP}
+        <strong>Fine tune selection</strong>
         <span>Adjust lightness + a/b around your chosen point</span>
       </p>
       <div class="actions">
         <button class="ghost" onclick={reset}>Restart</button>
         <button class="ghost" onclick={goBack}>Back</button>
+        <button class="next" onclick={confirmNarrowSelection} disabled={!pendingNarrowSelection}>
+          Confirm color
+        </button>
       </div>
     </div>
-    <GridColorPicker color={narrowCenter} onselect={onconfirm} />
+
+    <div class="narrow-preview">
+      <div class="narrow-preview-swatch" style="background: rgb({narrowPreviewRgb.join(',')});"></div>
+      <div class="narrow-preview-label">
+        <strong>{pendingNarrowSelection ? 'Selected color' : 'Current center'}</strong>
+        <span>L {narrowPreviewColor.lightness} a {narrowPreviewColor.a} b {narrowPreviewColor.b}</span>
+      </div>
+    </div>
+
+    <GridColorPicker
+      color={narrowCenter}
+      selected={narrowDisplaySelection}
+      onlightnesschange={handleNarrowPreviewLightness}
+      onselect={handleNarrowPick}
+    />
   {/if}
 </div>
 
@@ -150,6 +225,11 @@
   .stage span {
     font-size: 0.72rem;
     color: #767676;
+  }
+  .stage strong {
+    font-size: 0.86rem;
+    color: #d0d0d0;
+    font-weight: 700;
   }
 
   .actions {
@@ -186,12 +266,13 @@
   }
 
   .preview {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 0.45rem;
+    width: 100%;
     border: 1px solid #333;
     border-radius: 999px;
-    padding: 0.22rem 0.6rem 0.22rem 0.25rem;
+    padding: 0.22rem 0.5rem 0.22rem 0.22rem;
     margin-bottom: 0.55rem;
     background: #171717;
     font-size: 0.72rem;
@@ -199,10 +280,51 @@
     font-variant-numeric: tabular-nums;
   }
   .preview-swatch {
-    width: 1.2rem;
-    height: 1.2rem;
-    border-radius: 50%;
+    width: 100%;
+    height: 1.55rem;
+    border-radius: 8px;
     border: 1px solid #666;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .preview span {
+    white-space: nowrap;
+  }
+
+  .narrow-preview {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    border: 1px solid #353535;
+    border-radius: 12px;
+    background: #161616;
+    padding: 0.5rem 0.7rem;
+    margin-bottom: 0.6rem;
+    width: fit-content;
+  }
+  .narrow-preview-swatch {
+    width: 3.6rem;
+    height: 3.6rem;
+    border-radius: 10px;
+    border: 1px solid #6e6e6e;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 2px 10px rgba(0, 0, 0, 0.45);
+    flex-shrink: 0;
+  }
+  .narrow-preview-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.18rem;
+    color: #c3c3c3;
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 150px;
+  }
+  .narrow-preview-label strong {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8d8d8d;
+    font-weight: 700;
   }
 </style>

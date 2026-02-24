@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import HueLightnessPicker from '$lib/HueLightnessPicker.svelte';
   import GradientPicker from '$lib/GradientPicker.svelte';
   import GridColorPicker from '$lib/GridColorPicker.svelte';
   import type { Color } from '$lib/types';
@@ -8,20 +9,18 @@
 
   // Sample colors for each state so they look interesting
   const sampleColors: Color[] = [
-    { lightness: 50, a: 0, b: 0 },       // state 1 — start at grey
-    { lightness: 55, a: 30, b: -40 },    // state 2 — zoomed in on a blue-purple region
-    { lightness: 60, a: -20, b: 35 },    // state 3 — zoomed in on olive/green
-    { lightness: 45, a: 40, b: -10 },    // state 4 — grid around a red-purple
+    { lightness: 50, a: 0, b: 0 },       // state 1 — start at center
+    { lightness: 55, a: 30, b: -40 },    // state 2 — refined hue/sat around selection
+    { lightness: 45, a: 40, b: -10 },    // state 3 — final fine-tune grid
   ];
 
-  let sampleColor = $derived(sampleColors[Math.min(stateNum - 1, 3)]);
+  let sampleColor = $derived(sampleColors[Math.min(stateNum - 1, 2)]);
   let lastSelected: Color | null = $state(null);
 
   const stateDescriptions = [
-    'Zoom 1 — initial broad view (full LAB space)',
-    'Zoom 2 — first zoom in (half the LAB space)',
-    'Zoom 3 — final zoom ("Final selection!" prompt)',
-    'Narrow / Grid — precise fine-grained selection',
+    'Step 1 — quick hue + brightness map',
+    'Step 2 — refined hue/saturation view',
+    'Step 3 — final fine-grained grid',
   ];
 </script>
 
@@ -31,7 +30,7 @@
   <div class="test-header">
     <h2>ColorPicker — {stateDescriptions[stateNum - 1] ?? '?'}</h2>
     <div class="state-links">
-      {#each [1, 2, 3, 4] as s}
+      {#each [1, 2, 3] as s}
         <a href="/test/colorPicker/{s}" class:active={s === stateNum}>State {s}</a>
       {/each}
       <a href="/test/colorPicker">Full flow</a>
@@ -42,28 +41,22 @@
   <!-- Simulates the game's .picking flex column (align-items: center) -->
   <div class="game-context">
     {#if stateNum === 1}
-      <GradientPicker
+      <HueLightnessPicker
         center={{ lightness: 50, a: 0, b: 0 }}
-        zoom={1}
+        selection={lastSelected}
         onselect={(c) => (lastSelected = c)}
       />
     {:else if stateNum === 2}
       <GradientPicker
         center={sampleColor}
         zoom={2}
+        selection={lastSelected}
         onselect={(c) => (lastSelected = c)}
       />
     {:else if stateNum === 3}
-      <!-- Zoom 3 = maxZoom, shows "Final selection!" -->
-      <div class="label">Final selection!</div>
-      <GradientPicker
-        center={sampleColor}
-        zoom={3}
-        onselect={(c) => (lastSelected = c)}
-      />
-    {:else if stateNum === 4}
       <GridColorPicker
         color={sampleColor}
+        selected={lastSelected}
         onselect={(c) => (lastSelected = c)}
       />
     {/if}
@@ -105,11 +98,6 @@
     gap: 1rem;
     border: 1px dashed #333;
     max-width: min(900px, calc(100vh - 120px));
-  }
-  .label {
-    font-size: 0.85rem;
-    color: #888;
-    margin-bottom: 0.4rem;
   }
   .selected-box {
     margin-top: 1rem;

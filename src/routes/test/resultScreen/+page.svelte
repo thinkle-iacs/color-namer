@@ -45,12 +45,13 @@
       },
     },
     roundClue: "stormy lavender",
+    roundPickedColor: { lightness: 55, a: 15, b: -35 },
     roundTarget: { lightness: 55, a: 15, b: -35 },
     roundGuesses: {
       "player-2": { lightness: 52, a: 10, b: -28 },
       "player-3": { lightness: 60, a: 22, b: -42 },
-      "player-4": { lightness: 35, a: 5, b: 12 },
-      "player-5": { lightness: 80, a: -25, b: 0 },
+      "player-4": { lightness: 45, a: 25, b: -8 },
+      "player-5": { lightness: 80, a: 18, b: 40 },
     },
   };
 

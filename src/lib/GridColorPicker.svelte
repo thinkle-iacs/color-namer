@@ -1,35 +1,60 @@
 <script lang="ts">
-  import { labToRgb } from './labToRgb';
+  import { hslToRgb, labToRgb, rgbToHsl, rgbToLab } from './labToRgb';
   import type { Color } from './types';
 
   const LIGHTNESS_STEP = 4;
   const MAX_LIGHTNESS_OFFSET = 20;
+  const HUE_RANGE = 24;
+  const SAT_RANGE = 24;
 
   type GridCell = Color & {
     r: number;
     g: number;
     bl: number;
     isCenter: boolean;
+    h: number;
+    s: number;
+    l: number;
   };
 
   const {
     color,
-    diff = 12,
+    selected = null,
     side = 9,
     onselect,
+    onlightnesschange,
   } = $props<{
     color: Color;
-    diff?: number;
+    selected?: Color | null;
     side?: number;
     onselect: (color: Color) => void;
+    onlightnesschange?: (lightness: number) => void;
   }>();
 
   let lightnessOffset = $state(0);
   let sideSize = $derived(side % 2 === 1 ? side : side + 1);
   let half = $derived((sideSize - 1) / 2);
-  let previewLightness = $derived(
-    Math.max(0, Math.min(100, Math.round(color.lightness + lightnessOffset)))
-  );
+  let centerHsl = $derived.by(() => {
+    const [r, g, bl] = labToRgb(color.lightness, color.a, color.b);
+    const [h, s, l] = rgbToHsl(r, g, bl);
+    return { h, s, l };
+  });
+  let satMin = $derived(clamp(centerHsl.s - SAT_RANGE, 0, 100));
+  let satMax = $derived(clamp(centerHsl.s + SAT_RANGE, 0, 100));
+  let satSpan = $derived(Math.max(1, satMax - satMin));
+
+  function clamp(v: number, min: number, max: number): number {
+    if (v < min) return min;
+    if (v > max) return max;
+    return v;
+  }
+
+  function wrapHue(h: number): number {
+    const wrapped = h % 360;
+    return wrapped < 0 ? wrapped + 360 : wrapped;
+  }
+
+  let previewLightness = $derived(clamp(Math.round(centerHsl.l + lightnessOffset), 0, 100));
 
   $effect(() => {
     color.lightness;
@@ -38,27 +63,55 @@
     lightnessOffset = 0;
   });
 
+  $effect(() => {
+    previewLightness;
+    onlightnesschange?.(previewLightness);
+  });
+
   let labCells = $derived.by(() => {
     const cells: GridCell[] = [];
     for (let yi = 0; yi < sideSize; yi++) {
+      const yT = sideSize <= 1 ? 0.5 : yi / (sideSize - 1);
+      const s = clamp(satMax - yT * satSpan, 0, 100);
       for (let xi = 0; xi < sideSize; xi++) {
-        const aOffset = Math.round(((xi - half) / half) * diff);
-        const bOffset = Math.round(((half - yi) / half) * diff);
-        const a = Math.max(-128, Math.min(127, color.a + aOffset));
-        const b = Math.max(-128, Math.min(127, color.b + bOffset));
-        const [r, g, bl] = labToRgb(previewLightness, a, b);
+        const xT = half === 0 ? 0 : (xi - half) / half;
+        const h = wrapHue(centerHsl.h + xT * HUE_RANGE);
+        const l = previewLightness;
+        const [r, g, bl] = hslToRgb(h, s, l);
+        const [lightness, a, b] = rgbToLab(r, g, bl);
         cells.push({
-          lightness: previewLightness,
+          lightness,
           a,
           b,
           r,
           g,
           bl,
           isCenter: xi === half && yi === half,
+          h,
+          s,
+          l,
         });
       }
     }
     return cells;
+  });
+
+  let selectedCellIndex = $derived.by(() => {
+    if (!selected || labCells.length === 0) return null;
+    let bestIndex = 0;
+    let bestDistSq = Infinity;
+    for (let i = 0; i < labCells.length; i++) {
+      const cell = labCells[i];
+      const dl = selected.lightness - cell.lightness;
+      const da = selected.a - cell.a;
+      const db = selected.b - cell.b;
+      const distSq = dl * dl + da * da + db * db;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        bestIndex = i;
+      }
+    }
+    return bestIndex;
   });
 
   function bumpLightness(delta: number): void {
@@ -89,13 +142,14 @@
     >Lighter</button>
   </div>
 
-  <div class="axis-hint">a/b plane around your selected color</div>
+  <div class="axis-hint">hue/saturation plane around your selected color</div>
 
   <div class="selector" style:--side-size={sideSize}>
-    {#each labCells as cell}
+    {#each labCells as cell, idx}
       <button
         class="swatch"
-        class:center-cell={cell.isCenter}
+        class:center-cell={selectedCellIndex === null && cell.isCenter}
+        class:selected-cell={selectedCellIndex === idx}
         style="background-color: rgb({cell.r}, {cell.g}, {cell.bl})"
         aria-label={`L ${cell.lightness} a ${cell.a} b ${cell.b}`}
         onclick={() => onselect({ lightness: cell.lightness, a: cell.a, b: cell.b })}
@@ -170,5 +224,8 @@
   }
   .center-cell {
     box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.92);
+  }
+  .selected-cell {
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2), 0 0 0 2px #77b6ff;
   }
 </style>

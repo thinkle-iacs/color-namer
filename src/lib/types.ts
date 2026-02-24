@@ -36,6 +36,10 @@ export type GameDoc = {
   // Each guesser's submitted color
   roundGuesses: Record<string, Color>;
 
+  // Picker's selected target color, saved as soon as it's chosen
+  // so refreshes cannot lose the round.
+  roundPickedColor: Color | null;
+
   // Only set when picker reveals (guessing → reveal)
   roundTarget: Color | null;
 };

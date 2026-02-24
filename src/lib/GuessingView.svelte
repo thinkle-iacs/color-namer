@@ -25,7 +25,16 @@
   let myGuess = $derived(game.roundGuesses[playerId]);
   let guessCount = $derived(Object.keys(game.roundGuesses).length);
   let totalGuessers = $derived(game.playerOrder.length - 1);
+  let revealColor = $derived(localPickedColor ?? game.roundPickedColor);
   let revealing = $state(false);
+  let canSkipAndReveal = $derived(
+    amPicker &&
+      totalGuessers > 1 &&
+      !allGuessersSubmitted &&
+      !!revealColor &&
+      !revealing &&
+      !game.roundTarget
+  );
   let autoRevealTriggered = $state(false);
   let revealError = $state('');
 
@@ -34,11 +43,11 @@
   }
 
   async function handleReveal(auto = false) {
-    if (!localPickedColor) return;
+    if (!revealColor) return;
     revealError = '';
     revealing = true;
     try {
-      await revealTarget(gameId, localPickedColor);
+      await revealTarget(gameId, revealColor);
     } catch {
       revealError = 'Auto-reveal failed. Tap reveal to retry.';
       if (auto) autoRevealTriggered = false;
@@ -50,7 +59,7 @@
     const shouldAutoReveal =
       amPicker &&
       allGuessersSubmitted &&
-      !!localPickedColor &&
+      !!revealColor &&
       !revealing &&
       !autoRevealTriggered &&
       !game.roundTarget;
@@ -106,22 +115,23 @@
         </p>
       {/if}
 
-      <button
-        class="reveal-btn"
-        disabled={!allGuessersSubmitted || revealing || !localPickedColor || autoRevealTriggered}
-        onclick={() => handleReveal(false)}
-      >
-        {revealing ? 'Revealing…' : 'Reveal now'}
-      </button>
+      {#if canSkipAndReveal}
+        <button
+          class="reveal-btn skip-btn"
+          disabled={revealing || !revealColor}
+          onclick={() => handleReveal(false)}
+        >
+          {revealing ? 'Revealing…' : 'Skip waiting and reveal'}
+        </button>
+      {/if}
 
       {#if revealError}
         <p class="reveal-error">{revealError}</p>
       {/if}
 
-      {#if !localPickedColor}
+      {#if !revealColor}
         <p class="no-color-warning">
-          ⚠ Your picked color wasn't saved (page may have refreshed).
-          Contact players to start a new round.
+          ⚠ Target color is missing. Go back to picking and choose a color again.
         </p>
       {/if}
     </div>
