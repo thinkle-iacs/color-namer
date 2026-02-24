@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { labToRgb } from './labToRgb';
-  import { computeResults, pickerScore, guesserScore } from './game';
-  import type { GameDoc } from './types';
+  import { labToRgb, rgbToHsl } from './labToRgb';
+  import { computeResults, pickerScore } from './game';
+  import type { Color, GameDoc } from './types';
 
   const { game, gameId, playerId, amPicker, onNextRound } = $props<{
     game: GameDoc;
@@ -18,8 +18,25 @@
   let pickerPlayerId = $derived(game.playerOrder[game.pickerIndex]);
   let pickerPts = $derived(pickerScore(results.map((r) => r.pointsEarned)));
 
-  function rgbStr(lightness: number, a: number, b: number) {
-    return labToRgb(lightness, a, b).join(',');
+  type ColorMode = 'lab' | 'rgb' | 'hsl';
+  let colorMode = $state<ColorMode>('lab');
+
+  function colorLabel(c: Color): string {
+    const [r, g, b] = labToRgb(c.lightness, c.a, c.b);
+    if (colorMode === 'lab') return `L ${c.lightness}  a ${c.a}  b ${c.b}`;
+    if (colorMode === 'rgb') return `${r}, ${g}, ${b}`;
+    const [h, s, l] = rgbToHsl(r, g, b);
+    return `${h}°  ${s}%  ${l}%`;
+  }
+
+  function colorLabelHeader(): string {
+    if (colorMode === 'lab') return 'L / a / b';
+    if (colorMode === 'rgb') return 'R / G / B';
+    return 'H / S / L';
+  }
+
+  function rgbCss(c: Color): string {
+    return labToRgb(c.lightness, c.a, c.b).join(',');
   }
 
   function textOn(lightness: number) {
@@ -40,22 +57,33 @@
       style="background: rgb({targetRgb.join(',')});
              color: {textOn(target.lightness)};"
     >
-      <span class="lab-label">
-        L={target.lightness} a={target.a} b={target.b}
-      </span>
+      <span class="color-val-label">{colorLabel(target)}</span>
     </div>
+  </div>
+
+  <div class="mode-toggle">
+    {#each (['lab', 'rgb', 'hsl'] as const) as m}
+      <button
+        class="mode-btn"
+        class:active={colorMode === m}
+        onclick={() => colorMode = m}
+      >{m.toUpperCase()}</button>
+    {/each}
+    <span class="mode-hint">{colorLabelHeader()}</span>
   </div>
 
   <div class="results-section">
     <p class="section-label">Results</p>
     <div class="results-grid">
       {#each results as r}
-        {@const rgb = rgbStr(r.guessedColor.lightness, r.guessedColor.a, r.guessedColor.b)}
         <div class="result-card">
-          <div class="result-swatch" style="background: rgb({rgb}); color: {textOn(r.guessedColor.lightness)};"></div>
+          <div class="result-swatch" style="background: rgb({rgbCss(r.guessedColor)}); color: {textOn(r.guessedColor.lightness)};"></div>
           <div class="result-info">
             <span class="player-dot" style="background: {r.avatarColor}"></span>
-            <span class="player-name">{r.name}{r.playerId === playerId ? ' (you)' : ''}</span>
+            <div class="result-name-block">
+              <span class="player-name">{r.name}{r.playerId === playerId ? ' (you)' : ''}</span>
+              <span class="color-val">{colorLabel(r.guessedColor)}</span>
+            </div>
           </div>
           <div class="result-score">
             <span class="pts">+{r.pointsEarned}</span>
@@ -70,10 +98,13 @@
           <div class="result-swatch target-mini" style="background: rgb({targetRgb.join(',')});"></div>
           <div class="result-info">
             <span class="player-dot" style="background: {game.players[pickerPlayerId].avatarColor}"></span>
-            <span class="player-name">
-              {game.players[pickerPlayerId].name}{pickerPlayerId === playerId ? ' (you)' : ''}
-              <em class="picker-tag">clue giver</em>
-            </span>
+            <div class="result-name-block">
+              <span class="player-name">
+                {game.players[pickerPlayerId].name}{pickerPlayerId === playerId ? ' (you)' : ''}
+                <em class="picker-tag">clue giver</em>
+              </span>
+              <span class="color-val">{colorLabel(target)}</span>
+            </div>
           </div>
           <div class="result-score">
             <span class="pts">+{pickerPts}</span>
@@ -140,7 +171,27 @@
     justify-content: center;
     padding-bottom: 8px;
   }
-  .lab-label { font-size: 0.65rem; opacity: 0.6; }
+  .color-val-label { font-size: 0.65rem; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+  .mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .mode-btn {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.25em 0.7em;
+    border-radius: 5px;
+    border: 1px solid #444;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: background 0.1s, color 0.1s;
+  }
+  .mode-btn.active { background: #333; color: #fff; border-color: #666; }
+  .mode-hint { font-size: 0.65rem; color: #555; margin-left: 0.4rem; }
 
   .results-section { width: 100%; max-width: 480px; }
   .results-grid { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -170,17 +221,30 @@
     align-items: center;
     gap: 0.4rem;
     overflow: hidden;
+    min-width: 0;
   }
   .player-dot {
     width: 10px; height: 10px;
     border-radius: 50%;
     flex-shrink: 0;
   }
+  .result-name-block {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
   .player-name {
     font-size: 0.95rem;
     color: #ccc;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .color-val {
+    font-size: 0.65rem;
+    color: #666;
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
   .picker-tag { font-size: 0.65rem; color: #fa0; font-style: normal; margin-left: 0.3rem; }
