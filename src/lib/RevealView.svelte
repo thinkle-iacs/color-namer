@@ -3,8 +3,6 @@
   import {
     computeResults,
     pickerScore,
-    distanceForGuesserScore,
-    GUESSER_MAX_SCORE,
     GUESSER_MAX_DISTANCE,
   } from './game';
   import type { Color, GameDoc } from './types';
@@ -27,8 +25,6 @@
   const LAB_LIMIT_A = 110;
   const LAB_LIMIT_B = 110;
   const MAX_DISPLAY_DISTANCE = GUESSER_MAX_DISTANCE;
-  const SCORE_RING_POINTS = [350, 100, 25] as const;
-  const RING_SEGMENTS = 64;
   const BASE_WORLD_SCALE = 1.35;
   const CAMERA_Z = 4;
   const FOCAL_LENGTH = 165;
@@ -58,21 +54,34 @@
     toLabColor: string;
   };
 
-  type ScoreRing = {
-    id: string;
-    path: string;
-    color: string;
-    width: number;
-    opacity: number;
-  };
+  function colorBlurb(guess: Color, tgt: Color): string {
+    const dL = guess.lightness - tgt.lightness;
+    const da = guess.a - tgt.a;
+    const db = guess.b - tgt.b;
+    const dist = Math.sqrt(dL * dL + da * da + db * db);
 
-  type ScoreLabel = {
-    id: string;
-    sx: number;
-    sy: number;
-    text: string;
-    color: string;
-  };
+    if (dist < 5) return 'near perfect!';
+
+    const parts: string[] = [];
+
+    if (Math.abs(dL) > 15) parts.push(dL > 0 ? 'way too light' : 'way too dark');
+    else if (Math.abs(dL) > 7) parts.push(dL > 0 ? 'too light' : 'too dark');
+    else if (Math.abs(dL) > 3) parts.push(dL > 0 ? 'a touch light' : 'a touch dark');
+
+    const absA = Math.abs(da);
+    const absB = Math.abs(db);
+    if (absA >= absB && absA > 5) {
+      if (absA > 20) parts.push(da > 0 ? 'much too red' : 'much too green');
+      else if (absA > 10) parts.push(da > 0 ? 'too red' : 'too green');
+      else parts.push(da > 0 ? 'a bit redder' : 'a bit greener');
+    } else if (absB > absA && absB > 5) {
+      if (absB > 20) parts.push(db > 0 ? 'much too yellow' : 'much too blue');
+      else if (absB > 10) parts.push(db > 0 ? 'too yellow' : 'too blue');
+      else parts.push(db > 0 ? 'a bit yellower' : 'a bit bluer');
+    }
+
+    return parts.join(', ') || 'slightly off';
+  }
 
   let yaw = $state(0.5);
   let pitch = $state(0.55);
@@ -198,9 +207,18 @@
     };
   }
 
+  // Minimum lightness for edge rendering so dark corners still show their hue.
+  // At L=0 (CIELAB), all colors are pure black regardless of a/b — boosting to
+  // MIN_RENDER_L keeps the gradient colours visible at the dark end of the cube.
+  // At L < ~30, extreme a/b values are gamut-clamped to near-identical dark
+  // colours making the gradient invisible. L=32 gives enough gamut room for
+  // the dark face edges to show clearly distinguishable hues.
+  const MIN_RENDER_L = 32;
+
   function vecRgb(point: Vec3): string {
     const lab = vecToLab(point);
-    return `rgb(${labToRgb(lab.lightness, lab.a, lab.b).join(',')})`;
+    const renderL = Math.max(lab.lightness, MIN_RENDER_L);
+    return `rgb(${labToRgb(renderL, lab.a, lab.b).join(',')})`;
   }
 
   const cubeVertices: Vec3[] = [
@@ -224,8 +242,8 @@
         to: projectPoint(cubeVertices[to]),
         fromColor: vecRgb(cubeVertices[from]),
         toColor: vecRgb(cubeVertices[to]),
-        fromLabColor: `lab(${fromLab.lightness} ${fromLab.a} ${fromLab.b})`,
-        toLabColor: `lab(${toLab.lightness} ${toLab.a} ${toLab.b})`,
+        fromLabColor: `lab(${Math.max(fromLab.lightness, MIN_RENDER_L)} ${fromLab.a} ${fromLab.b})`,
+        toLabColor: `lab(${Math.max(toLab.lightness, MIN_RENDER_L)} ${toLab.a} ${toLab.b})`,
       };
     })
   );
@@ -249,66 +267,6 @@
     return { x: sum.x / points.length, y: sum.y / points.length };
   });
 
-  function ringPath(distance: number, plane: 'ab' | 'al' | 'bl'): string {
-    const projected: SpacePoint[] = [];
-    for (let i = 0; i < RING_SEGMENTS; i++) {
-      const t = (i / RING_SEGMENTS) * Math.PI * 2;
-      let lightness = target.lightness;
-      let a = target.a;
-      let b = target.b;
-
-      if (plane === 'ab') {
-        a += Math.cos(t) * distance;
-        b += Math.sin(t) * distance;
-      } else if (plane === 'al') {
-        a += Math.cos(t) * distance;
-        lightness += Math.sin(t) * distance;
-      } else {
-        b += Math.cos(t) * distance;
-        lightness += Math.sin(t) * distance;
-      }
-
-      projected.push(projectPoint(labToVecUnbounded(lightness, a, b)));
-    }
-    return pointsToClosedPath(projected);
-  }
-
-  let scoreRings = $derived.by((): ScoreRing[] => {
-    const rings: ScoreRing[] = [];
-    const planes: Array<'ab' | 'al' | 'bl'> = ['ab', 'al', 'bl'];
-    for (const points of SCORE_RING_POINTS) {
-      const distance = distanceForGuesserScore(points);
-      const strength = points / GUESSER_MAX_SCORE;
-      const color = `hsl(${Math.round(strength * 120)}, 85%, 60%)`;
-      for (const plane of planes) {
-        rings.push({
-          id: `ring-${points}-${plane}`,
-          path: ringPath(distance, plane),
-          color,
-          width: plane === 'ab' ? 1.4 : 1,
-          opacity: plane === 'ab' ? 0.62 : 0.34,
-        });
-      }
-    }
-    return rings;
-  });
-
-  let scoreRingLabels = $derived.by((): ScoreLabel[] => {
-    return SCORE_RING_POINTS.map((points) => {
-      const distance = distanceForGuesserScore(points);
-      const labelPoint = projectPoint(
-        labToVecUnbounded(target.lightness + distance, target.a, target.b)
-      );
-      const color = `hsl(${Math.round((points / GUESSER_MAX_SCORE) * 120)}, 85%, 70%)`;
-      return {
-        id: `ring-label-${points}`,
-        sx: labelPoint.sx + 5,
-        sy: labelPoint.sy - 2,
-        text: `${points} pts`,
-        color,
-      };
-    });
-  });
 
   type ColorMode = 'lab' | 'rgb' | 'hsl';
   let colorMode = $state<ColorMode>('lab');
@@ -366,6 +324,67 @@
       >{m.toUpperCase()}</button>
     {/each}
     <span class="mode-hint">{colorLabelHeader()}</span>
+  </div>
+
+  <div class="results-section">
+    <p class="section-label">Results</p>
+    <div class="results-grid">
+      {#each resultRows as r}
+        <div class="result-card">
+          <div class="result-swatch" style="background: rgb({rgbCss(r.guessedColor)});background: lab({r.guessedColor.lightness} {r.guessedColor.a} {r.guessedColor.b});"></div>
+          <div class="result-info">
+            <span class="player-dot" style="background: {r.avatarColor}"></span>
+            <div class="result-name-block">
+              <span class="player-name">{r.name}{r.playerId === playerId ? ' (you)' : ''}</span>
+              <span class="color-blurb">{colorBlurb(r.guessedColor, target)}</span>
+              <span class="color-val">{colorLabel(r.guessedColor)}</span>
+            </div>
+          </div>
+          <div class="result-score">
+            <span class="pts">+{r.pointsEarned}</span>
+            <div class="dist-meter">
+              <span style="width: {r.distancePct}%; background: {r.avatarColor};"></span>
+            </div>
+            <span class="dist">Δ {Math.round(r.distance)}</span>
+          </div>
+        </div>
+      {/each}
+
+      <!-- Picker row -->
+      {#if game.players[pickerPlayerId]}
+        <div class="result-card picker-row">
+          <div class="result-swatch target-mini" style="background: rgb({targetRgb.join(',')});background: lab({target.lightness} {target.a} {target.b});"></div>
+          <div class="result-info">
+            <span class="player-dot" style="background: {game.players[pickerPlayerId].avatarColor}"></span>
+            <div class="result-name-block">
+              <span class="player-name">
+                {game.players[pickerPlayerId].name}{pickerPlayerId === playerId ? ' (you)' : ''}
+                <em class="picker-tag">clue giver</em>
+              </span>
+              <span class="color-val">{colorLabel(target)}</span>
+            </div>
+          </div>
+          <div class="result-score">
+            <span class="pts">+{pickerPts}</span>
+            <span class="dist">avg/2</span>
+          </div>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <div class="scores-section">
+    <p class="section-label">Scoreboard</p>
+    <div class="score-list">
+      {#each [...game.playerOrder].sort((a, b) => game.players[b].score - game.players[a].score) as id}
+        {@const p = game.players[id]}
+        <div class="score-row" class:is-me={id === playerId}>
+          <span class="player-dot" style="background: {p.avatarColor}"></span>
+          <span class="sname">{p.name}</span>
+          <span class="stotal">{p.score} pts</span>
+        </div>
+      {/each}
+    </div>
   </div>
 
   <div class="space-section">
@@ -433,17 +452,6 @@
             />
           {/each}
 
-          <line class="axis-guide axis-a" x1={cubeProjected[0].sx} y1={cubeProjected[0].sy} x2={cubeProjected[1].sx} y2={cubeProjected[1].sy} />
-          <line class="axis-guide axis-b" x1={cubeProjected[0].sx} y1={cubeProjected[0].sy} x2={cubeProjected[4].sx} y2={cubeProjected[4].sy} />
-          <line class="axis-guide axis-l" x1={cubeProjected[0].sx} y1={cubeProjected[0].sy} x2={cubeProjected[3].sx} y2={cubeProjected[3].sy} />
-
-          {#each scoreRings as ring}
-            <path
-              class="score-ring"
-              d={ring.path}
-              style="stroke: {ring.color}; stroke-width: {ring.width}; opacity: {ring.opacity};"
-            />
-          {/each}
 
           {#each resultRows as r}
             <line
@@ -476,83 +484,14 @@
           />
           <text class="target-label" x={targetPoint.sx + 11} y={targetPoint.sy + 4}>Target</text>
 
-          {#each scoreRingLabels as label}
-            <text
-              class="score-ring-label"
-              x={label.sx}
-              y={label.sy}
-              style="fill: {label.color};"
-            >{label.text}</text>
-          {/each}
-
-          <text class="axis-label axis-a" x={cubeProjected[1].sx + 6} y={cubeProjected[1].sy + 16}>a*</text>
-          <text class="axis-label axis-b" x={cubeProjected[4].sx - 8} y={cubeProjected[4].sy + 16}>b*</text>
-          <text class="axis-label axis-l" x={cubeProjected[3].sx - 6} y={cubeProjected[3].sy - 8}>L*</text>
         </g>
       </svg>
-      <p class="space-note">Drag to rotate the LAB cube. Edge gradients show how color shifts through space.</p>
-      <p class="space-note">Concentric score rings mark approximate 350/100/25-point distance zones around the target.</p>
-      <p class="space-note">Each player line is the LAB distance from a guess to the target.</p>
-    </div>
-  </div>
-
-  <div class="results-section">
-    <p class="section-label">Results</p>
-    <div class="results-grid">
-      {#each resultRows as r}
-        <div class="result-card">
-          <div class="result-swatch" style="background: rgb({rgbCss(r.guessedColor)});background: lab({r.guessedColor.lightness} {r.guessedColor.a} {r.guessedColor.b});"></div>
-          <div class="result-info">
-            <span class="player-dot" style="background: {r.avatarColor}"></span>
-            <div class="result-name-block">
-              <span class="player-name">{r.name}{r.playerId === playerId ? ' (you)' : ''}</span>
-              <span class="color-val">{colorLabel(r.guessedColor)}</span>
-            </div>
-          </div>
-          <div class="result-score">
-            <span class="pts">+{r.pointsEarned}</span>
-            <div class="dist-meter">
-              <span style="width: {r.distancePct}%; background: {r.avatarColor};"></span>
-            </div>
-            <span class="dist">Δ {Math.round(r.distance)}</span>
-          </div>
-        </div>
-      {/each}
-
-      <!-- Picker row -->
-      {#if game.players[pickerPlayerId]}
-        <div class="result-card picker-row">
-          <div class="result-swatch target-mini" style="background: rgb({targetRgb.join(',')});background: lab({target.lightness} {target.a} {target.b});"></div>
-          <div class="result-info">
-            <span class="player-dot" style="background: {game.players[pickerPlayerId].avatarColor}"></span>
-            <div class="result-name-block">
-              <span class="player-name">
-                {game.players[pickerPlayerId].name}{pickerPlayerId === playerId ? ' (you)' : ''}
-                <em class="picker-tag">clue giver</em>
-              </span>
-              <span class="color-val">{colorLabel(target)}</span>
-            </div>
-          </div>
-          <div class="result-score">
-            <span class="pts">+{pickerPts}</span>
-            <span class="dist">avg/2</span>
-          </div>
-        </div>
-      {/if}
-    </div>
-  </div>
-
-  <div class="scores-section">
-    <p class="section-label">Scoreboard</p>
-    <div class="score-list">
-      {#each [...game.playerOrder].sort((a, b) => game.players[b].score - game.players[a].score) as id}
-        {@const p = game.players[id]}
-        <div class="score-row" class:is-me={id === playerId}>
-          <span class="player-dot" style="background: {p.avatarColor}"></span>
-          <span class="sname">{p.name}</span>
-          <span class="stotal">{p.score} pts</span>
-        </div>
-      {/each}
+      <div class="axis-legend">
+        <span><span style="color:#7aba7a">green</span> ←a*→ <span style="color:#d87878">red</span></span>
+        <span><span style="color:#82b4db">blue</span> ←b*→ <span style="color:#d7c374">yellow</span></span>
+        <span>dark ↕ light (L*)</span>
+      </div>
+      <p class="space-note">Drag to rotate. Each player line shows the LAB distance from their guess to the target.</p>
     </div>
   </div>
 
@@ -696,31 +635,9 @@
     stroke-width: 1.2;
     opacity: 0.85;
   }
-  .axis-guide {
-    stroke-width: 2;
-    stroke-linecap: round;
-    opacity: 0.6;
-  }
-  .axis-guide.axis-a { stroke: #d87878; }
-  .axis-guide.axis-b { stroke: #d7c374; }
-  .axis-guide.axis-l { stroke: #82bfdb; }
   .distance-line {
     stroke-width: 1.8;
     opacity: 0.8;
-  }
-  .score-ring {
-    fill: none;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-    vector-effect: non-scaling-stroke;
-  }
-  .score-ring-label {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.03em;
-    paint-order: stroke;
-    stroke: #0f0f0f;
-    stroke-width: 2px;
   }
   .guess-point {
     stroke-width: 2.3;
@@ -746,14 +663,15 @@
     stroke: #0f0f0f;
     stroke-width: 2.2px;
   }
-  .axis-label {
-    fill: #777;
-    font-size: 10px;
-    letter-spacing: 0.04em;
+  .axis-legend {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    font-size: 0.68rem;
+    color: #888;
+    margin: 0.4rem 0 0.1rem;
   }
-  .axis-a { fill: #b87777; }
-  .axis-b { fill: #bfa56f; }
-  .axis-l { fill: #8faebf; }
   .space-note {
     font-size: 0.72rem;
     color: #777;
@@ -808,6 +726,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .color-blurb {
+    font-size: 0.72rem;
+    color: #8a8;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .color-val {
     font-size: 0.65rem;
