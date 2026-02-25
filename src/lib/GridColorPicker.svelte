@@ -1,18 +1,13 @@
 <script lang="ts">
-  import { isInDisplayP3, labStyle } from './labToRgb';
+  import { labStyle, isInDisplayP3 } from './labToRgb';
   import type { Color } from './types';
 
-  const GRID_RADIUS = 4;
-  const GRID_SIDE = GRID_RADIUS * 2 + 1; // 9x9
-  const PAGE_OFFSETS = [-2, -1, 0, 1, 2] as const;
-  const PAGE_STEP = 2;
-
-  const LIGHTNESS_MIN = 0;
-  const LIGHTNESS_MAX = 100;
-  const A_MIN = -128;
-  const A_MAX = 127;
-  const B_MIN = -128;
-  const B_MAX = 127;
+  // 5 lightness pages: 2 darker, current, 2 lighter.
+  // PAGE_STEP controls the L-unit gap between pages.
+  const PAGE_STEP = 6;
+  const NUM_PAGES = 5;
+  const CENTER_PAGE = 2; // index of the "current" page
+  const RANGE = 4;       // ±4 LAB units → up to 9×9 grid
 
   const {
     color,
@@ -26,174 +21,127 @@
     onlightnesschange?: (lightness: number) => void;
   }>();
 
-  type CellData = {
-    color: Color;
-    style: string;
-    isCenter: boolean;
-  };
-
-  type PageData = {
-    targetL: number;
-    centerColor: Color;
-    centerStyle: string;
-    cells: CellData[];
-  };
-
-  let activePageIdx = $state(0);
-
   function clamp(v: number, lo: number, hi: number): number {
     return v < lo ? lo : v > hi ? hi : v;
   }
 
-  // Keep a/b fixed for "address", and find nearest displayable L at that address.
-  function resolveDisplayableLightness(targetL: number, a: number, b: number): number {
-    let bestL = clamp(Math.round(targetL), LIGHTNESS_MIN, LIGHTNESS_MAX);
-    let bestDist = Number.POSITIVE_INFINITY;
+  // Which page is currently shown (0 = darkest, 4 = lightest).
+  let currentPage = $state(CENTER_PAGE);
 
-    for (let l = LIGHTNESS_MIN; l <= LIGHTNESS_MAX; l++) {
-      if (!isInDisplayP3(l, a, b)) continue;
-      const dist = Math.abs(l - targetL);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestL = l;
+  // Reset to center page whenever the base color changes.
+  $effect(() => { color.lightness; color.a; color.b; currentPage = CENTER_PAGE; });
+
+  // Lightness for each of the 5 pages, clamped to [1, 99].
+  let pageLightnesses = $derived(
+    Array.from({ length: NUM_PAGES }, (_, i) =>
+      clamp(Math.round(color.lightness + (i - CENTER_PAGE) * PAGE_STEP), 1, 99)
+    )
+  );
+
+  // A page is "valid" if the anchor (a, b) is in P3 at that lightness.
+  // This prevents navigating to pages where the whole grid would go grey.
+  let pageValid = $derived(
+    pageLightnesses.map(pL => isInDisplayP3(pL, color.a, color.b))
+  );
+
+  let L = $derived(pageLightnesses[currentPage]);
+
+  // Notify parent of lightness changes so the preview swatch updates.
+  $effect(() => { onlightnesschange?.(L); });
+
+  // Largest symmetric integer range where all 4 a/b corners are in P3.
+  let effectiveRange = $derived.by(() => {
+    for (let r = RANGE; r >= 1; r--) {
+      const corners: [number, number][] = [
+        [color.a - r, color.b - r],
+        [color.a - r, color.b + r],
+        [color.a + r, color.b - r],
+        [color.a + r, color.b + r],
+      ];
+      if (corners.every(([a, b]) => isInDisplayP3(L, a, b))) return r;
+    }
+    return 1;
+  });
+
+  let gridSize = $derived(effectiveRange * 2 + 1);
+
+  type CellData = { lightness: number; a: number; b: number; style: string; isCenter: boolean };
+
+  let cells = $derived.by((): CellData[] => {
+    const out: CellData[] = [];
+    const r = effectiveRange;
+    for (let row = 0; row < gridSize; row++) {
+      for (let col = 0; col < gridSize; col++) {
+        const a = color.a - r + col;
+        const b = color.b + r - row;
+        const isCenter = col === r && row === r;
+        out.push({ lightness: L, a, b, style: labStyle(L, a, b), isCenter });
       }
     }
-
-    return bestL;
-  }
-
-  // Build fixed A/B-addressed pages around the selected center.
-  let pages = $derived.by((): PageData[] => {
-    const baseL = clamp(Math.round(color.lightness), LIGHTNESS_MIN, LIGHTNESS_MAX);
-    const baseA = clamp(Math.round(color.a), A_MIN, A_MAX);
-    const baseB = clamp(Math.round(color.b), B_MIN, B_MAX);
-
-    const seenTargetL = new Set<number>();
-    const out: PageData[] = [];
-
-    for (const offset of PAGE_OFFSETS) {
-      const targetL = clamp(baseL + offset * PAGE_STEP, LIGHTNESS_MIN, LIGHTNESS_MAX);
-      if (seenTargetL.has(targetL)) continue;
-      seenTargetL.add(targetL);
-
-      const cells: CellData[] = [];
-      const centerResolvedL = resolveDisplayableLightness(targetL, baseA, baseB);
-      const centerColor: Color = { lightness: centerResolvedL, a: baseA, b: baseB };
-      const centerStyle = labStyle(centerColor.lightness, centerColor.a, centerColor.b);
-
-      for (let row = 0; row < GRID_SIDE; row++) {
-        for (let col = 0; col < GRID_SIDE; col++) {
-          const a = clamp(baseA - GRID_RADIUS + col, A_MIN, A_MAX);
-          const b = clamp(baseB + GRID_RADIUS - row, B_MIN, B_MAX);
-          const resolvedL = resolveDisplayableLightness(targetL, a, b);
-
-          cells.push({
-            color: { lightness: resolvedL, a, b },
-            style: labStyle(resolvedL, a, b),
-            isCenter: row === GRID_RADIUS && col === GRID_RADIUS,
-          });
-        }
-      }
-
-      out.push({ targetL, centerColor, centerStyle, cells });
-    }
-
     return out;
   });
 
-  // Reset to page closest to center L when center changes.
-  $effect(() => {
-    color.lightness;
-    color.a;
-    color.b;
-    const baseL = clamp(Math.round(color.lightness), LIGHTNESS_MIN, LIGHTNESS_MAX);
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < pages.length; i++) {
-      const dist = Math.abs(pages[i].targetL - baseL);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    }
-    activePageIdx = bestIdx;
-  });
-
-  $effect(() => {
-    pages.length;
-    if (activePageIdx < 0) activePageIdx = 0;
-    if (activePageIdx > pages.length - 1) activePageIdx = Math.max(0, pages.length - 1);
-  });
-
-  let currentPage = $derived(pages[activePageIdx] ?? null);
-  let canGoDarker = $derived(activePageIdx > 0);
-  let canGoLighter = $derived(activePageIdx < pages.length - 1);
-
-  $effect(() => {
-    onlightnesschange?.(currentPage?.centerColor.lightness ?? Math.round(color.lightness));
-  });
-
-  let cells = $derived(currentPage?.cells ?? []);
-
   let selectedIdx = $derived.by(() => {
     if (!selected) return null;
-
+    // Exact match first
     for (let i = 0; i < cells.length; i++) {
-      const c = cells[i].color;
-      if (
-        c.lightness === selected.lightness &&
-        c.a === selected.a &&
-        c.b === selected.b
-      ) {
-        return i;
-      }
+      if (cells[i].a === selected.a && cells[i].b === selected.b && cells[i].lightness === selected.lightness) return i;
     }
-
-    // Keep highlight stable even if selected L was gamut-adjusted elsewhere.
-    let best = -1;
-    let bestDist = Infinity;
+    // Nearest otherwise
+    let best = -1, bestDist = Infinity;
     for (let i = 0; i < cells.length; i++) {
-      const c = cells[i].color;
-      const dist =
-        (c.lightness - selected.lightness) ** 2 +
-        (c.a - selected.a) ** 2 +
-        (c.b - selected.b) ** 2;
-      if (dist < bestDist) {
-        bestDist = dist;
-        best = i;
-      }
+      const dist = (selected.a - cells[i].a) ** 2 + (selected.b - cells[i].b) ** 2 + (selected.lightness - cells[i].lightness) ** 2;
+      if (dist < bestDist) { bestDist = dist; best = i; }
     }
     return best >= 0 ? best : null;
   });
+
+  // Can navigate if: there's a page in that direction, it's valid, and its L
+  // value is actually different (avoids duplicate pages when near L=1 or L=99).
+  let canGoDarker = $derived(
+    currentPage > 0 &&
+    pageValid[currentPage - 1] &&
+    pageLightnesses[currentPage - 1] !== pageLightnesses[currentPage]
+  );
+  let canGoLighter = $derived(
+    currentPage < NUM_PAGES - 1 &&
+    pageValid[currentPage + 1] &&
+    pageLightnesses[currentPage + 1] !== pageLightnesses[currentPage]
+  );
 </script>
 
 <div class="fine-picker">
-  <div class="picker-nav">
-    <button class="step-btn" aria-label="Darker page" onclick={() => (activePageIdx -= 1)} disabled={!canGoDarker}>−</button>
-    {#each pages as page, idx}
-      <button
-        class="page-pill"
-        class:active={idx === activePageIdx}
-        style={page.centerStyle}
-        aria-label="Show page around L {page.targetL}"
-        onclick={() => (activePageIdx = idx)}
-      ></button>
-    {/each}
-    <button class="step-btn" aria-label="Lighter page" onclick={() => (activePageIdx += 1)} disabled={!canGoLighter}>+</button>
-  </div>
-
-  <div class="grid" style="grid-template-columns: repeat({GRID_SIDE}, 1fr);">
+  <div class="grid" style="grid-template-columns: repeat({gridSize}, 1fr);">
     {#each cells as cell, idx}
       <button
         class="swatch"
         class:center-cell={selectedIdx === null && cell.isCenter}
         class:selected-cell={selectedIdx === idx}
         style={cell.style}
-        aria-label="L {cell.color.lightness} a {cell.color.a} b {cell.color.b}"
-        onclick={() => onselect(cell.color)}
+        aria-label="L {cell.lightness} a {cell.a} b {cell.b}"
+        onclick={() => onselect({ lightness: cell.lightness, a: cell.a, b: cell.b })}
       ></button>
     {/each}
   </div>
+
+  <div class="page-nav">
+    <button class="nav-btn" onclick={() => currentPage--} disabled={!canGoDarker}>↓ Darker</button>
+    <div class="page-dots">
+      {#each pageLightnesses as pL, i}
+        <button
+          class="page-dot"
+          class:active={i === currentPage}
+          class:invalid={!pageValid[i]}
+          onclick={() => { if (pageValid[i]) currentPage = i; }}
+          aria-label="L {pL}"
+          title="L {pL}"
+        ></button>
+      {/each}
+    </div>
+    <button class="nav-btn" onclick={() => currentPage++} disabled={!canGoLighter}>↑ Lighter</button>
+  </div>
+
+  <div class="hint">L {L} · ±{effectiveRange} LAB · {gridSize}×{gridSize}</div>
 </div>
 
 <style>
@@ -203,55 +151,6 @@
     align-items: center;
     gap: 0.45rem;
     width: 100%;
-  }
-
-  .picker-nav {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    width: 100%;
-    justify-content: center;
-  }
-  .step-btn {
-    border: 1px solid #4a4a4a;
-    background: #1f1f1f;
-    color: #d6d6d6;
-    border-radius: 999px;
-    width: 2rem;
-    height: 2rem;
-    font-size: 1rem;
-    font-weight: 700;
-    line-height: 1;
-    padding: 0;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .step-btn:hover:not([disabled]) {
-    background: #2a2a2a;
-  }
-  .step-btn[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  .page-pill {
-    width: 1.9rem;
-    height: 1.2rem;
-    border: 1px solid #4e4e4e;
-    border-radius: 999px;
-    padding: 0;
-    cursor: pointer;
-    flex-shrink: 0;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
-  }
-  .page-pill:hover {
-    transform: translateY(-1px);
-    border-color: #8a8a8a;
-  }
-  .page-pill.active {
-    border-color: #77b6ff;
-    box-shadow:
-      inset 0 0 0 1px rgba(255, 255, 255, 0.25),
-      0 0 0 2px rgba(119, 182, 255, 0.35);
   }
 
   .grid {
@@ -266,23 +165,66 @@
     padding: 0;
     border-radius: 3px;
     cursor: pointer;
-    position: relative;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
   }
   .swatch:hover {
     transform: scale(1.08);
     z-index: 1;
     position: relative;
-    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.8);
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,0.8);
   }
   .center-cell {
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,0.85);
   }
   .selected-cell {
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2), 0 0 0 4px #77b6ff;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.2), 0 0 0 4px #77b6ff;
     z-index: 2;
     position: relative;
+  }
+
+  .page-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .nav-btn {
+    border: 1px solid #4a4a4a;
+    background: #1f1f1f;
+    color: #d6d6d6;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    padding: 0.28em 0.65em;
+    cursor: pointer;
+  }
+  .nav-btn:hover:not([disabled]) { background: #2a2a2a; }
+  .nav-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+  .page-dots {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+  .page-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1.5px solid #555;
+    background: #2a2a2a;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .page-dot:hover:not(.invalid) { border-color: #999; }
+  .page-dot.active {
+    background: #77b6ff;
+    border-color: #aad4ff;
+  }
+  .page-dot.invalid {
+    opacity: 0.25;
+    cursor: not-allowed;
+  }
+
+  .hint {
+    font-size: 0.65rem;
+    color: #666;
   }
 </style>
