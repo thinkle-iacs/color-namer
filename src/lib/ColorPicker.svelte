@@ -1,192 +1,142 @@
 <script lang="ts">
-  import GradientPicker from './GradientPicker.svelte';
+  import LchHueLightnessPicker from './LchHueLightnessPicker.svelte';
+  import LchChromaLightnessPicker from './LchChromaLightnessPicker.svelte';
   import GridColorPicker from './GridColorPicker.svelte';
-  import { labToRgb } from './labToRgb';
+  import { labToRgb, normalizeLabToDisplayP3 } from './labToRgb';
   import type { Color } from './types';
 
   const INITIAL_COLOR: Color = { lightness: 50, a: 0, b: 0 };
-  const MAX_BROAD_ZOOM = 2;
-  const FINAL_STEP = 3;
 
   const { onconfirm } = $props<{ onconfirm: (color: Color) => void }>();
 
-  let mode = $state<'broad' | 'narrow'>('broad');
-  let zoom = $state(1);
-  let centers = $state<Color[]>([INITIAL_COLOR]);
-  let pendingSelection = $state<Color | null>(null);
-  let broadPreviewLightnessOverride = $state<number | null>(null);
-  let narrowCenter = $state<Color>(INITIAL_COLOR);
-  let pendingNarrowSelection = $state<Color | null>(null);
-  let narrowPreviewLightnessOverride = $state<number | null>(null);
+  // step 1 = LchHueLightnessPicker (hue × lightness broad view)
+  // step 2 = LchChromaLightnessPicker (chroma × lightness + hue strip)
+  // step 3 = GridColorPicker (fine ±4 LAB around chosen point)
+  let step = $state<1 | 2 | 3>(1);
 
-  let currentCenter = $derived(centers[zoom - 1] ?? INITIAL_COLOR);
-  let broadDisplaySelection = $derived(pendingSelection ?? currentCenter);
-  let broadPreviewBaseColor = $derived(pendingSelection ?? currentCenter);
-  let previewColor = $derived.by(() => {
-    if (broadPreviewLightnessOverride === null) return broadPreviewBaseColor;
-    return {
-      ...broadPreviewBaseColor,
-      lightness: broadPreviewLightnessOverride,
-    };
+  let step2Center = $state<Color>(INITIAL_COLOR); // set by step 1 click
+  let step3Center = $state<Color>(INITIAL_COLOR); // set by step 2 click
+
+  let pendingFineSelection = $state<Color | null>(null);
+  let finePreviewLightnessOverride = $state<number | null>(null);
+
+  let finePreviewBaseColor = $derived(pendingFineSelection ?? step3Center);
+  let finePreviewColor = $derived.by(() => {
+    if (finePreviewLightnessOverride === null) return finePreviewBaseColor;
+    return { ...finePreviewBaseColor, lightness: finePreviewLightnessOverride };
   });
-  let previewRgb = $derived(labToRgb(previewColor.lightness, previewColor.a, previewColor.b));
-  let nextSelectionRange = $derived(zoom < MAX_BROAD_ZOOM ? 128 / (zoom + 1) : null);
-  let narrowDisplaySelection = $derived(pendingNarrowSelection ?? narrowCenter);
-  let narrowPreviewBaseColor = $derived(pendingNarrowSelection ?? narrowCenter);
-  let narrowPreviewColor = $derived.by(() => {
-    if (narrowPreviewLightnessOverride === null) return narrowPreviewBaseColor;
-    return {
-      ...narrowPreviewBaseColor,
-      lightness: narrowPreviewLightnessOverride,
-    };
-  });
-  let narrowPreviewRgb = $derived(
-    labToRgb(narrowPreviewColor.lightness, narrowPreviewColor.a, narrowPreviewColor.b)
+  let finePreviewRgb = $derived(
+    labToRgb(finePreviewColor.lightness, finePreviewColor.a, finePreviewColor.b)
   );
 
-  function setCenterForZoom(stage: number, color: Color): void {
-    const next = [...centers];
-    next[stage - 1] = color;
-    centers = next;
-  }
-
+  // Step 1 click: gamut-map and advance to step 2
   function handleBroadPick(c: Color): void {
-    pendingSelection = c;
-    broadPreviewLightnessOverride = c.lightness;
+    step2Center = normalizeLabToDisplayP3(c);
+    step = 2;
   }
 
-  function goNext(): void {
-    if (!pendingSelection) return;
-    const selected = pendingSelection;
-    setCenterForZoom(zoom, selected);
+  // Step 2 click: gamut-map and advance to step 3
+  function handleMediumPick(c: Color): void {
+    const mapped = normalizeLabToDisplayP3(c);
+    step3Center = mapped;
+    pendingFineSelection = null;
+    finePreviewLightnessOverride = mapped.lightness;
+    step = 3;
+  }
 
-    if (zoom < MAX_BROAD_ZOOM) {
-      setCenterForZoom(zoom + 1, selected);
-      zoom += 1;
-      pendingSelection = selected;
-      broadPreviewLightnessOverride = null;
-      return;
-    }
+  function handleFinePick(c: Color): void {
+    pendingFineSelection = c;
+    finePreviewLightnessOverride = c.lightness;
+  }
 
-    narrowCenter = selected;
-    mode = 'narrow';
-    pendingNarrowSelection = null;
-    narrowPreviewLightnessOverride = selected.lightness;
-    pendingSelection = null;
+  function handleFinePreviewLightness(lightness: number): void {
+    finePreviewLightnessOverride = lightness;
   }
 
   function goBack(): void {
-    if (mode === 'narrow') {
-      mode = 'broad';
-      zoom = MAX_BROAD_ZOOM;
-      setCenterForZoom(MAX_BROAD_ZOOM, narrowCenter);
-      pendingSelection = narrowCenter;
-      pendingNarrowSelection = null;
-      broadPreviewLightnessOverride = narrowCenter.lightness;
-      narrowPreviewLightnessOverride = null;
-      return;
+    if (step === 3) {
+      step = 2;
+      pendingFineSelection = null;
+      finePreviewLightnessOverride = null;
+    } else if (step === 2) {
+      step = 1;
     }
-    if (zoom <= 1) return;
-    zoom -= 1;
-    pendingSelection = centers[zoom - 1] ?? null;
-    broadPreviewLightnessOverride = null;
   }
 
   function reset(): void {
-    mode = 'broad';
-    zoom = 1;
-    centers = [INITIAL_COLOR];
-    pendingSelection = null;
-    broadPreviewLightnessOverride = null;
-    narrowCenter = INITIAL_COLOR;
-    pendingNarrowSelection = null;
-    narrowPreviewLightnessOverride = null;
+    step = 1;
+    step2Center = INITIAL_COLOR;
+    step3Center = INITIAL_COLOR;
+    pendingFineSelection = null;
+    finePreviewLightnessOverride = null;
   }
 
-  function handleBroadPreviewLightness(lightness: number): void {
-    broadPreviewLightnessOverride = lightness;
-  }
-
-  function handleNarrowPick(c: Color): void {
-    pendingNarrowSelection = c;
-    narrowPreviewLightnessOverride = c.lightness;
-  }
-
-  function handleNarrowPreviewLightness(lightness: number): void {
-    narrowPreviewLightnessOverride = lightness;
-  }
-
-  function confirmNarrowSelection(): void {
-    if (!pendingNarrowSelection) return;
-    onconfirm(pendingNarrowSelection);
+  function confirmFineSelection(): void {
+    if (!pendingFineSelection) return;
+    onconfirm(pendingFineSelection);
   }
 </script>
 
 <div class="color-picker">
-  {#if mode === 'broad'}
-    <div class="picker-topbar">
-      <p class="stage">
-        Step {zoom}/{FINAL_STEP}
-        {#if zoom === 1}
-          <span>Pick a hue + brightness region</span>
-        {:else}
-          <span>Refine hue/saturation, then continue</span>
-        {/if}
-      </p>
-      <div class="actions">
-        <button class="ghost" onclick={reset}>Restart</button>
-        <button class="ghost" onclick={goBack} disabled={zoom === 1}>Back</button>
-        <button class="next" onclick={goNext} disabled={!pendingSelection}>
-          {zoom === MAX_BROAD_ZOOM ? 'Fine tune' : 'Next'}
-        </button>
-      </div>
-    </div>
-
-    <div class="preview">
-      <div class="preview-swatch" style="background: rgb({previewRgb.join(',')});"></div>
-      <span>L {previewColor.lightness} a {previewColor.a} b {previewColor.b}</span>
-    </div>
-
-    {#key `${zoom}-${currentCenter.lightness}-${currentCenter.a}-${currentCenter.b}`}
-      <GradientPicker
-        center={currentCenter}
-        {zoom}
-        selection={broadDisplaySelection}
-        selectionRange={nextSelectionRange}
-        onlightnesschange={handleBroadPreviewLightness}
-        onselect={handleBroadPick}
-      />
-    {/key}
-  {:else}
-    <div class="picker-topbar">
-      <p class="stage">
-        Step {FINAL_STEP}/{FINAL_STEP}
-        <strong>Fine tune selection</strong>
-        <span>Adjust lightness + a/b around your chosen point</span>
-      </p>
-      <div class="actions">
+  <!-- ── TOPBAR ── -->
+  <div class="picker-topbar">
+    <p class="stage">
+      Step {step}/3
+      {#if step === 1}
+        <span>Pick a color family</span>
+      {:else if step === 2}
+        <span>Choose shade &amp; saturation</span>
+      {:else}
+        <strong>Fine tune</strong>
+        <span>Pick the exact color</span>
+      {/if}
+    </p>
+    <div class="actions">
+      {#if step !== 1}
         <button class="ghost" onclick={reset}>Restart</button>
         <button class="ghost" onclick={goBack}>Back</button>
-        <button class="next" onclick={confirmNarrowSelection} disabled={!pendingNarrowSelection}>
-          Confirm color
-        </button>
+      {/if}
+    </div>
+  </div>
+
+  <!-- ── STEP 1: hue × lightness broad view ── -->
+  {#if step === 1}
+    <LchHueLightnessPicker onselect={handleBroadPick} />
+
+  <!-- ── STEP 2: chroma × lightness refinement ── -->
+  {:else if step === 2}
+    {#key `${step2Center.lightness}-${step2Center.a}-${step2Center.b}`}
+      <LchChromaLightnessPicker
+        color={step2Center}
+        onselect={handleMediumPick}
+      />
+    {/key}
+
+  <!-- ── STEP 3: fine grid ── -->
+  {:else}
+    <button
+      type="button"
+      class="selected-preview"
+      disabled={!pendingFineSelection}
+      aria-label="Confirm selected color"
+      onclick={confirmFineSelection}
+    >
+      <div class="selected-preview-head">
+        <strong>{pendingFineSelection ? 'Confirm Color:' : 'Choose Color:'}</strong>
+        <span>L {finePreviewColor.lightness} a {finePreviewColor.a} b {finePreviewColor.b}</span>
       </div>
+      <div class="selected-preview-swatch" style="background: rgb({finePreviewRgb.join(',')});"></div>
+    </button>
+
+    <div class="fine-grid-wrap">
+      <GridColorPicker
+        color={step3Center}
+        selected={pendingFineSelection ?? step3Center}
+        onlightnesschange={handleFinePreviewLightness}
+        onselect={handleFinePick}
+      />
     </div>
 
-    <div class="narrow-preview">
-      <div class="narrow-preview-swatch" style="background: rgb({narrowPreviewRgb.join(',')});"></div>
-      <div class="narrow-preview-label">
-        <strong>{pendingNarrowSelection ? 'Selected color' : 'Current center'}</strong>
-        <span>L {narrowPreviewColor.lightness} a {narrowPreviewColor.a} b {narrowPreviewColor.b}</span>
-      </div>
-    </div>
-
-    <GridColorPicker
-      color={narrowCenter}
-      selected={narrowDisplaySelection}
-      onlightnesschange={handleNarrowPreviewLightness}
-      onselect={handleNarrowPick}
-    />
   {/if}
 </div>
 
@@ -250,72 +200,52 @@
     background: transparent;
     color: #aaa;
   }
-  .next {
-    border-color: #7aa9ff;
-    color: #ecf4ff;
-    background: linear-gradient(135deg, #3158a8, #1f6a8c);
-  }
-
-  .preview {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    width: 100%;
-    border: 1px solid #333;
-    border-radius: 999px;
-    padding: 0.22rem 0.5rem 0.22rem 0.22rem;
-    margin-bottom: 0.55rem;
-    background: #171717;
-    font-size: 0.72rem;
-    color: #aaa;
-    font-variant-numeric: tabular-nums;
-  }
-  .preview-swatch {
-    width: 100%;
-    height: 1.55rem;
-    border-radius: 8px;
-    border: 1px solid #666;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .preview span {
-    white-space: nowrap;
-  }
-
-  .narrow-preview {
-    display: flex;
-    align-items: center;
-    gap: 0.8rem;
+  .selected-preview {
     border: 1px solid #353535;
     border-radius: 12px;
     background: #161616;
-    padding: 0.5rem 0.7rem;
+    padding: 0.6rem 0.75rem;
     margin-bottom: 0.6rem;
-    width: fit-content;
+    width: 100%;
+    text-align: left;
+    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
   }
-  .narrow-preview-swatch {
-    width: 3.6rem;
-    height: 3.6rem;
-    border-radius: 10px;
-    border: 1px solid #6e6e6e;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 2px 10px rgba(0, 0, 0, 0.45);
-    flex-shrink: 0;
+  .selected-preview:hover:not([disabled]) {
+    border-color: #7aa9ff;
+    box-shadow: 0 0 0 1px rgba(122, 169, 255, 0.45);
+    transform: translateY(-1px);
   }
-  .narrow-preview-label {
+  .selected-preview[disabled] {
+    opacity: 0.65;
+    cursor: default;
+  }
+  .selected-preview-head {
     display: flex;
-    flex-direction: column;
-    gap: 0.18rem;
+    justify-content: space-between;
+    gap: 0.65rem;
+    align-items: baseline;
+    margin-bottom: 0.45rem;
     color: #c3c3c3;
     font-size: 0.78rem;
     font-variant-numeric: tabular-nums;
-    min-width: 150px;
+    white-space: nowrap;
   }
-  .narrow-preview-label strong {
+  .selected-preview-head strong {
     font-size: 0.74rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #8d8d8d;
     font-weight: 700;
+  }
+  .selected-preview-swatch {
+    width: 100%;
+    height: 2.6rem;
+    border-radius: 9px;
+    border: 1px solid #6e6e6e;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), 0 2px 10px rgba(0, 0, 0, 0.45);
+  }
+
+  .fine-grid-wrap {
+    width: 100%;
   }
 </style>

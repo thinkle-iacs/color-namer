@@ -1,25 +1,22 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import BroadColorPicker from '$lib/BroadColorPicker.svelte';
   import GradientPicker from '$lib/GradientPicker.svelte';
   import GridColorPicker from '$lib/GridColorPicker.svelte';
   import type { Color } from '$lib/types';
 
   let stateNum = $derived(Number($page.params.state) || 1);
 
-  // Sample colors for each state so they look interesting
-  const sampleColors: Color[] = [
-    { lightness: 50, a: 0, b: 0 },       // state 1 — start at center
-    { lightness: 55, a: 30, b: -40 },    // state 2 — refined hue/sat around selection
-    { lightness: 45, a: 40, b: -10 },    // state 3 — final fine-tune grid
-  ];
+  // Sample center colors for step 2 and 3 (yellow-green region)
+  const step2Center: Color = { lightness: 78, a: -20, b: 40 };
+  const step3Center: Color = { lightness: 55, a: 30, b: -40 };
 
-  let sampleColor = $derived(sampleColors[Math.min(stateNum - 1, 2)]);
   let lastSelected: Color | null = $state(null);
 
   const stateDescriptions = [
-    'Step 1 — LAB a/b button grid (zoom 1)',
-    'Step 2 — LAB a/b button grid (zoom 2)',
-    'Step 3 — final fine-grained grid',
+    'Step 1 — BroadColorPicker (hue × lightness)',
+    'Step 2 — GradientPicker (a/b neighborhood)',
+    'Step 3 — GridColorPicker (fine ±4 LAB)',
   ];
 </script>
 
@@ -40,22 +37,17 @@
   <!-- Simulates the game's .picking flex column (align-items: center) -->
   <div class="game-context">
     {#if stateNum === 1}
-      <GradientPicker
-        center={{ lightness: 50, a: 0, b: 0 }}
-        zoom={1}
-        selection={lastSelected}
-        onselect={(c) => (lastSelected = c)}
-      />
+      <BroadColorPicker onselect={(c) => (lastSelected = c)} />
     {:else if stateNum === 2}
       <GradientPicker
-        center={sampleColor}
-        zoom={2}
+        center={step2Center}
+        zoom={4}
         selection={lastSelected}
         onselect={(c) => (lastSelected = c)}
       />
     {:else if stateNum === 3}
       <GridColorPicker
-        color={sampleColor}
+        color={step3Center}
         selected={lastSelected}
         onselect={(c) => (lastSelected = c)}
       />

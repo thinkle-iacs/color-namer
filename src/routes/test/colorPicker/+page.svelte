@@ -12,10 +12,9 @@
     <h1>ColorPicker — full flow</h1>
     <p>
       See individual states:
-      <a href="/test/colorPicker/1">State 1</a> ·
-      <a href="/test/colorPicker/2">State 2</a> ·
-      <a href="/test/colorPicker/3">State 3 (final zoom)</a> ·
-      <a href="/test/colorPicker/4">State 4 (grid)</a>
+      <a href="/test/colorPicker/1">State 1 (broad hue×L)</a> ·
+      <a href="/test/colorPicker/2">State 2 (a/b neighborhood)</a> ·
+      <a href="/test/colorPicker/3">State 3 (fine grid)</a>
     </p>
     <p>Also: <a href="/test/resultScreen">Result Screen</a></p>
   </div>
