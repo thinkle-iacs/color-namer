@@ -1,7 +1,6 @@
 <script lang="ts">
   import GradientPicker from './GradientPicker.svelte';
   import GridColorPicker from './GridColorPicker.svelte';
-  import HueLightnessPicker from './HueLightnessPicker.svelte';
   import { labToRgb } from './labToRgb';
   import type { Color } from './types';
 
@@ -148,24 +147,16 @@
       <span>L {previewColor.lightness} a {previewColor.a} b {previewColor.b}</span>
     </div>
 
-    {#if zoom === 1}
-      <HueLightnessPicker
+    {#key `${zoom}-${currentCenter.lightness}-${currentCenter.a}-${currentCenter.b}`}
+      <GradientPicker
         center={currentCenter}
+        {zoom}
         selection={broadDisplaySelection}
+        selectionRange={nextSelectionRange}
+        onlightnesschange={handleBroadPreviewLightness}
         onselect={handleBroadPick}
       />
-    {:else}
-      {#key `${zoom}-${currentCenter.lightness}-${currentCenter.a}-${currentCenter.b}`}
-        <GradientPicker
-          center={currentCenter}
-          {zoom}
-          selection={broadDisplaySelection}
-          selectionRange={nextSelectionRange}
-          onlightnesschange={handleBroadPreviewLightness}
-          onselect={handleBroadPick}
-        />
-      {/key}
-    {/if}
+    {/key}
   {:else}
     <div class="picker-topbar">
       <p class="stage">

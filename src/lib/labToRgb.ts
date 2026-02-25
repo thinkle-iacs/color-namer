@@ -257,6 +257,19 @@ export function generateColorOptions(seed: number, count: number): Array<{ light
   return selected.slice(0, count);
 }
 
+// Returns an inline style string with rgb() fallback and native lab() for modern browsers.
+// Use as: style={labStyle(l, a, b)} — the duplicate property trick lets modern browsers
+// pick the lab() declaration while older ones fall back to rgb().
+export function labStyle(
+  l: number,
+  a: number,
+  b: number,
+  property = 'background'
+): string {
+  const [r, g, bl] = labToRgb(l, a, b);
+  return `${property}:rgb(${r},${g},${bl});${property}:lab(${l} ${a} ${b})`;
+}
+
 export function rgbToLab(r: number, g: number, b: number) {
   let red = r / 255;
   let green = g / 255;

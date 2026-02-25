@@ -343,8 +343,7 @@
     <p class="section-label">The target color</p>
     <div
       class="target-swatch"
-      style="background: rgb({targetRgb.join(',')});
-             color: {textOn(target.lightness)};"
+      style="background: rgb({targetRgb.join(',')});background: lab({target.lightness} {target.a} {target.b});color: {textOn(target.lightness)};"
     >
       <span class="color-val-label">{colorLabel(target)}</span>
     </div>
@@ -494,7 +493,7 @@
     <div class="results-grid">
       {#each resultRows as r}
         <div class="result-card">
-          <div class="result-swatch" style="background: rgb({rgbCss(r.guessedColor)}); color: {textOn(r.guessedColor.lightness)};"></div>
+          <div class="result-swatch" style="background: rgb({rgbCss(r.guessedColor)});background: lab({r.guessedColor.lightness} {r.guessedColor.a} {r.guessedColor.b});"></div>
           <div class="result-info">
             <span class="player-dot" style="background: {r.avatarColor}"></span>
             <div class="result-name-block">
@@ -515,7 +514,7 @@
       <!-- Picker row -->
       {#if game.players[pickerPlayerId]}
         <div class="result-card picker-row">
-          <div class="result-swatch target-mini" style="background: rgb({targetRgb.join(',')});"></div>
+          <div class="result-swatch target-mini" style="background: rgb({targetRgb.join(',')});background: lab({target.lightness} {target.a} {target.b});"></div>
           <div class="result-info">
             <span class="player-dot" style="background: {game.players[pickerPlayerId].avatarColor}"></span>
             <div class="result-name-block">

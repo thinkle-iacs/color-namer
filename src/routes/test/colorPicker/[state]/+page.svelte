@@ -1,6 +1,5 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import HueLightnessPicker from '$lib/HueLightnessPicker.svelte';
   import GradientPicker from '$lib/GradientPicker.svelte';
   import GridColorPicker from '$lib/GridColorPicker.svelte';
   import type { Color } from '$lib/types';
@@ -18,8 +17,8 @@
   let lastSelected: Color | null = $state(null);
 
   const stateDescriptions = [
-    'Step 1 — quick hue + brightness map',
-    'Step 2 — refined hue/saturation view',
+    'Step 1 — LAB a/b button grid (zoom 1)',
+    'Step 2 — LAB a/b button grid (zoom 2)',
     'Step 3 — final fine-grained grid',
   ];
 </script>
@@ -41,8 +40,9 @@
   <!-- Simulates the game's .picking flex column (align-items: center) -->
   <div class="game-context">
     {#if stateNum === 1}
-      <HueLightnessPicker
+      <GradientPicker
         center={{ lightness: 50, a: 0, b: 0 }}
+        zoom={1}
         selection={lastSelected}
         onselect={(c) => (lastSelected = c)}
       />

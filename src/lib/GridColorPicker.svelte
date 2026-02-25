@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { hslToRgb, labToRgb, rgbToHsl, rgbToLab } from './labToRgb';
+  import { hslToRgb, labToRgb, labStyle, rgbToHsl, rgbToLab } from './labToRgb';
   import type { Color } from './types';
 
   const LIGHTNESS_STEP = 4;
@@ -150,7 +150,7 @@
         class="swatch"
         class:center-cell={selectedCellIndex === null && cell.isCenter}
         class:selected-cell={selectedCellIndex === idx}
-        style="background-color: rgb({cell.r}, {cell.g}, {cell.bl})"
+        style={labStyle(cell.lightness, cell.a, cell.b)}
         aria-label={`L ${cell.lightness} a ${cell.a} b ${cell.b}`}
         onclick={() => onselect({ lightness: cell.lightness, a: cell.a, b: cell.b })}
       ></button>

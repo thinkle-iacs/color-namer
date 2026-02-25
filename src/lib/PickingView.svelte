@@ -1,7 +1,7 @@
 <script lang="ts">
   import ColorPicker from './ColorPicker.svelte';
   import ColorDescriber from './ColorDescriber.svelte';
-  import { labToRgb, generateColorOptions } from './labToRgb';
+  import { labStyle, generateColorOptions } from './labToRgb';
   import { savePickedColor, submitClue } from './game';
   import type { Color, Difficulty } from './types';
 
@@ -60,8 +60,8 @@
     void savePickedColor(gameId, color);
   }
 
-  function swatchRgb(c: Color): string {
-    return labToRgb(c.lightness, c.a, c.b).join(',');
+  function swatchStyle(c: Color): string {
+    return labStyle(c.lightness, c.a, c.b);
   }
 </script>
 
@@ -77,7 +77,7 @@
       <div class="assigned-wrap">
         <div
           class="assigned-swatch"
-          style="background: rgb({swatchRgb(hardColor)});"
+          style={swatchStyle(hardColor)}
         ></div>
       </div>
 
@@ -102,7 +102,7 @@
           {#each mediumOptions as opt}
             <button
               class="swatch-btn"
-              style="background: rgb({swatchRgb(opt)});"
+              style={swatchStyle(opt)}
               onclick={() => {
                 chooseColor(opt);
                 step = 'clue';
@@ -120,7 +120,7 @@
           <p class="swatch-label">Your chosen color:</p>
           <div
             class="chosen-swatch"
-            style="background: rgb({swatchRgb(pickedColor)});"
+            style={swatchStyle(pickedColor)}
           ></div>
           <button class="reselect" onclick={() => (step = 'pick')}>
             ← Change color
@@ -156,7 +156,7 @@
           <p class="swatch-label">Your secret color:</p>
           <div
             class="chosen-swatch"
-            style="background: rgb({swatchRgb(pickedColor)});"
+            style={swatchStyle(pickedColor)}
           ></div>
           <button class="reselect" onclick={() => (step = 'pick')}>
             ← Change color
