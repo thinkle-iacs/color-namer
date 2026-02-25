@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Crayon favicon">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4fa8ff"/>
+      <stop offset="100%" stop-color="#2d6fd8"/>
+    </linearGradient>
+    <linearGradient id="tipGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8d39b"/>
+      <stop offset="100%" stop-color="#ddad70"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="#111317"/>
+
+  <g transform="rotate(-24 32 32)">
+    <rect x="12" y="25" width="36" height="14" rx="4" fill="url(#bodyGrad)" stroke="#d9ecff" stroke-width="2"/>
+
+    <rect x="21" y="25" width="12" height="14" fill="#1f3f75" opacity="0.9"/>
+    <line x1="23" y1="25" x2="23" y2="39" stroke="#88b7ff" stroke-width="1.4" opacity="0.85"/>
+    <line x1="31" y1="25" x2="31" y2="39" stroke="#88b7ff" stroke-width="1.4" opacity="0.85"/>
+    <line x1="21" y1="32" x2="33" y2="32" stroke="#88b7ff" stroke-width="1.2" opacity="0.75"/>
+
+    <polygon points="48,25 59,32 48,39" fill="url(#tipGrad)" stroke="#f0dcc0" stroke-width="2"/>
+    <polygon points="59,32 54.5,34.5 54.5,29.5" fill="#27211b"/>
+
+    <rect x="10" y="25" width="4" height="14" rx="1.2" fill="#6ed67e" stroke="#d8ffe0" stroke-width="1.6"/>
+  </g>
+</svg>
