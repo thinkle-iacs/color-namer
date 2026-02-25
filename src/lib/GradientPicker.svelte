@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { labStyle } from './labToRgb';
+  import { labToRgb } from './labToRgb';
 
   const COLS = 7;
   const ROWS = 7;
@@ -30,15 +30,41 @@
 
   type CellData = { a: number; b: number; style: string };
 
+  // Half-width of one cell in LAB a and b units
+  let cellHalfA = $derived(range / COLS);
+  let cellHalfB = $derived(range / ROWS);
+
+  function clampLab(v: number): number {
+    return Math.max(-128, Math.min(127, Math.round(v)));
+  }
+
+  // Build a gradient style string showing the diagonal spread of each cell's
+  // LAB a/b region: top-left corner (low a, high b) → bottom-right (high a, low b).
+  // Uses the CSS duplicate-property trick for progressive enhancement:
+  // old browsers get linear-gradient(rgb, rgb), modern ones get linear-gradient(lab, lab)
+  // and interpolate in perceptual LAB space.
+  function cellGradientStyle(rawA: number, rawB: number): string {
+    const aLo = clampLab(rawA - cellHalfA);
+    const aHi = clampLab(rawA + cellHalfA);
+    const bLo = clampLab(rawB - cellHalfB);
+    const bHi = clampLab(rawB + cellHalfB);
+    const [r1, g1, b1] = labToRgb(lightness, aLo, bHi); // top-left
+    const [r2, g2, b2] = labToRgb(lightness, aHi, bLo); // bottom-right
+    return [
+      `background:linear-gradient(135deg,rgb(${r1},${g1},${b1}),rgb(${r2},${g2},${b2}))`,
+      `background:linear-gradient(135deg,lab(${lightness} ${aLo} ${bHi}),lab(${lightness} ${aHi} ${bLo}))`,
+    ].join(';');
+  }
+
   let cells = $derived.by((): CellData[] => {
     const out: CellData[] = [];
     for (let row = 0; row < ROWS; row++) {
       for (let col = 0; col < COLS; col++) {
         const rawA = center.a - range + ((col + 0.5) / COLS) * (range * 2);
         const rawB = center.b + range - ((row + 0.5) / ROWS) * (range * 2);
-        const a = Math.max(-128, Math.min(127, Math.round(rawA)));
-        const b = Math.max(-128, Math.min(127, Math.round(rawB)));
-        out.push({ a, b, style: labStyle(lightness, a, b) });
+        const a = clampLab(rawA);
+        const b = clampLab(rawB);
+        out.push({ a, b, style: cellGradientStyle(rawA, rawB) });
       }
     }
     return out;
