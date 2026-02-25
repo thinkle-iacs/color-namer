@@ -124,6 +124,20 @@
     updateLightness(clientY);
   }
 
+  // Lightness slider shows the actual hue at dark→light in LAB space.
+  // Duplicate background property: rgb() fallback, then lab() for modern browsers.
+  let sliderBg = $derived.by(() => {
+    const ca = center.a;
+    const cb = center.b;
+    const [r0, g0, b0] = labToRgb(5, ca, cb);
+    const [r5, g5, b5] = labToRgb(50, ca, cb);
+    const [r100, g100, b100] = labToRgb(95, ca, cb);
+    return (
+      `background:linear-gradient(to top,rgb(${r0},${g0},${b0}),rgb(${r5},${g5},${b5}),rgb(${r100},${g100},${b100}));` +
+      `background:linear-gradient(to top,lab(5 ${ca} ${cb}),lab(50 ${ca} ${cb}),lab(95 ${ca} ${cb}))`
+    );
+  });
+
   // Reset lightness when center changes
   $effect(() => {
     center.lightness;
@@ -141,7 +155,7 @@
   <!-- L (lightness) axis slider -->
   <div
     class="lightness-slider"
-    style="width: {SLIDER_W}px; height: {gridSize}px;"
+    style="width: {SLIDER_W}px; height: {gridSize}px; {sliderBg}"
     bind:this={lightnessSlider}
     aria-roledescription="slider"
     onmousedown={startDragging}
@@ -197,7 +211,7 @@
   .lightness-slider {
     position: relative;
     flex-shrink: 0;
-    background: linear-gradient(to top, black, white);
+    /* background set via inline style (reactive LAB gradient) */
     user-select: none;
     border-radius: 4px 0 0 4px;
     cursor: ns-resize;

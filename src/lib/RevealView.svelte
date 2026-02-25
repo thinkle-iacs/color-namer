@@ -54,6 +54,8 @@
     to: SpacePoint;
     fromColor: string;
     toColor: string;
+    fromLabColor: string;
+    toLabColor: string;
   };
 
   type ScoreRing = {
@@ -213,13 +215,19 @@
   ];
 
   let cubeRenderEdges = $derived(
-    cubeEdges.map(([from, to], idx): EdgeRender => ({
-      id: `edge-${idx}`,
-      from: projectPoint(cubeVertices[from]),
-      to: projectPoint(cubeVertices[to]),
-      fromColor: vecRgb(cubeVertices[from]),
-      toColor: vecRgb(cubeVertices[to]),
-    }))
+    cubeEdges.map(([from, to], idx): EdgeRender => {
+      const fromLab = vecToLab(cubeVertices[from]);
+      const toLab = vecToLab(cubeVertices[to]);
+      return {
+        id: `edge-${idx}`,
+        from: projectPoint(cubeVertices[from]),
+        to: projectPoint(cubeVertices[to]),
+        fromColor: vecRgb(cubeVertices[from]),
+        toColor: vecRgb(cubeVertices[to]),
+        fromLabColor: `lab(${fromLab.lightness} ${fromLab.a} ${fromLab.b})`,
+        toLabColor: `lab(${toLab.lightness} ${toLab.a} ${toLab.b})`,
+      };
+    })
   );
   let cubeProjected = $derived(cubeVertices.map((v) => projectPoint(v)));
 
@@ -394,8 +402,8 @@
                 x2={edge.to.sx}
                 y2={edge.to.sy}
               >
-                <stop offset="0%" stop-color={edge.fromColor}></stop>
-                <stop offset="100%" stop-color={edge.toColor}></stop>
+                <stop offset="0%" style="stop-color:{edge.fromColor};stop-color:{edge.fromLabColor}"></stop>
+                <stop offset="100%" style="stop-color:{edge.toColor};stop-color:{edge.toLabColor}"></stop>
               </linearGradient>
             {/each}
 
@@ -408,8 +416,8 @@
                 x2={r.plot.sx}
                 y2={r.plot.sy}
               >
-                <stop offset="0%" stop-color={`rgb(${targetRgb.join(',')})`}></stop>
-                <stop offset="100%" stop-color={`rgb(${rgbCss(r.guessedColor)})`}></stop>
+                <stop offset="0%" style="stop-color:rgb({targetRgb.join(',')});stop-color:lab({target.lightness} {target.a} {target.b})"></stop>
+                <stop offset="100%" style="stop-color:rgb({rgbCss(r.guessedColor)});stop-color:lab({r.guessedColor.lightness} {r.guessedColor.a} {r.guessedColor.b})"></stop>
               </linearGradient>
             {/each}
           </defs>
@@ -454,7 +462,7 @@
               cx={r.plot.sx}
               cy={r.plot.sy}
               r="6.5"
-              style="fill: rgb({rgbCss(r.guessedColor)}); stroke: {r.avatarColor};"
+              style="fill:rgb({rgbCss(r.guessedColor)});fill:lab({r.guessedColor.lightness} {r.guessedColor.a} {r.guessedColor.b});stroke:{r.avatarColor};"
             />
             <text class="point-label" x={r.plot.sx + 9} y={r.plot.sy - 8}>Δ{Math.round(r.distance)}</text>
           {/each}
@@ -464,7 +472,7 @@
             cx={targetPoint.sx}
             cy={targetPoint.sy}
             r="8.5"
-            style="fill: rgb({targetRgb.join(',')});"
+            style="fill:rgb({targetRgb.join(',')});fill:lab({target.lightness} {target.a} {target.b});"
           />
           <text class="target-label" x={targetPoint.sx + 11} y={targetPoint.sy + 4}>Target</text>
 
