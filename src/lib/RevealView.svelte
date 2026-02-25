@@ -345,7 +345,6 @@
             <div class="dist-meter">
               <span style="width: {r.distancePct}%; background: {r.avatarColor};"></span>
             </div>
-            <span class="dist">Δ {Math.round(r.distance)}</span>
           </div>
         </div>
       {/each}
@@ -472,7 +471,7 @@
               r="6.5"
               style="fill:rgb({rgbCss(r.guessedColor)});fill:lab({r.guessedColor.lightness} {r.guessedColor.a} {r.guessedColor.b});stroke:{r.avatarColor};"
             />
-            <text class="point-label" x={r.plot.sx + 9} y={r.plot.sy - 8}>Δ{Math.round(r.distance)}</text>
+            <text class="point-label" x={r.plot.sx + 9} y={r.plot.sy - 8}>{r.name}</text>
           {/each}
 
           <circle
@@ -486,12 +485,7 @@
 
         </g>
       </svg>
-      <div class="axis-legend">
-        <span><span style="color:#7aba7a">green</span> ←a*→ <span style="color:#d87878">red</span></span>
-        <span><span style="color:#82b4db">blue</span> ←b*→ <span style="color:#d7c374">yellow</span></span>
-        <span>dark ↕ light (L*)</span>
-      </div>
-      <p class="space-note">Drag to rotate. Each player line shows the LAB distance from their guess to the target.</p>
+      <p class="space-note">Drag to rotate. The longer the line from player to target, the further off the guess.</p>
     </div>
   </div>
 
@@ -663,15 +657,6 @@
     stroke: #0f0f0f;
     stroke-width: 2.2px;
   }
-  .axis-legend {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    font-size: 0.68rem;
-    color: #888;
-    margin: 0.4rem 0 0.1rem;
-  }
   .space-note {
     font-size: 0.72rem;
     color: #777;
@@ -809,7 +794,6 @@
       min-width: 48px;
       font-size: 0.68rem;
     }
-    .point-label { display: none; }
     .dist-meter { width: 58px; }
   }
 </style>

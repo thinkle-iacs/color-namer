@@ -39,7 +39,7 @@
   function handleMediumPick(c: Color): void {
     const mapped = normalizeLabToDisplayP3(c);
     step3Center = mapped;
-    pendingFineSelection = null;
+    pendingFineSelection = mapped;
     finePreviewLightnessOverride = mapped.lightness;
     step = 3;
   }
@@ -72,8 +72,7 @@
   }
 
   function confirmFineSelection(): void {
-    if (!pendingFineSelection) return;
-    onconfirm(pendingFineSelection);
+    onconfirm(pendingFineSelection ?? step3Center);
   }
 </script>
 
@@ -117,12 +116,11 @@
     <button
       type="button"
       class="selected-preview"
-      disabled={!pendingFineSelection}
       aria-label="Confirm selected color"
       onclick={confirmFineSelection}
     >
       <div class="selected-preview-head">
-        <strong>{pendingFineSelection ? 'Confirm Color:' : 'Choose Color:'}</strong>
+        <strong>Confirm Color:</strong>
         <span>L {finePreviewColor.lightness} a {finePreviewColor.a} b {finePreviewColor.b}</span>
       </div>
       <div class="selected-preview-swatch" style="background: rgb({finePreviewRgb.join(',')});"></div>
@@ -192,10 +190,6 @@
     background: #2b2b2b;
     border-color: #5a5a5a;
   }
-  button[disabled] {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
   .ghost {
     background: transparent;
     color: #aaa;
@@ -214,10 +208,6 @@
     border-color: #7aa9ff;
     box-shadow: 0 0 0 1px rgba(122, 169, 255, 0.45);
     transform: translateY(-1px);
-  }
-  .selected-preview[disabled] {
-    opacity: 0.65;
-    cursor: default;
   }
   .selected-preview-head {
     display: flex;
