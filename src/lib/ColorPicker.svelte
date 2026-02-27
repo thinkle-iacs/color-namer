@@ -7,7 +7,10 @@
 
   const INITIAL_COLOR: Color = { lightness: 50, a: 0, b: 0 };
 
-  const { onconfirm } = $props<{ onconfirm: (color: Color) => void }>();
+  const { onconfirm, onchange } = $props<{
+    onconfirm: (color: Color) => void;
+    onchange?: (color: Color) => void;
+  }>();
 
   // step 1 = LchHueLightnessPicker (hue × lightness broad view)
   // step 2 = LchChromaLightnessPicker (chroma × lightness + hue strip)
@@ -28,6 +31,19 @@
   let finePreviewRgb = $derived(
     labToRgb(finePreviewColor.lightness, finePreviewColor.a, finePreviewColor.b)
   );
+
+  // The best "current" color at any stage — used by parent for auto-submit on timer expiry
+  let currentColor = $derived.by<Color | null>(() => {
+    if (step === 3) return finePreviewColor;
+    if (step === 2) return step2Center;
+    return null;
+  });
+
+  $effect(() => {
+    if (currentColor) onchange?.(currentColor);
+  });
+
+  let confirmTextColor = $derived(finePreviewColor.lightness > 55 ? '#111' : '#fff');
 
   // Step 1 click: gamut-map and advance to step 2
   function handleBroadPick(c: Color): void {
@@ -113,18 +129,13 @@
 
   <!-- ── STEP 3: fine grid ── -->
   {:else}
-    <button
-      type="button"
-      class="selected-preview"
-      aria-label="Confirm selected color"
-      onclick={confirmFineSelection}
-    >
+    <div class="selected-preview" aria-live="polite">
       <div class="selected-preview-head">
-        <strong>Confirm Color:</strong>
+        <strong>Selected:</strong>
         <span>L {finePreviewColor.lightness} a {finePreviewColor.a} b {finePreviewColor.b}</span>
       </div>
       <div class="selected-preview-swatch" style="background: rgb({finePreviewRgb.join(',')});"></div>
-    </button>
+    </div>
 
     <div class="fine-grid-wrap">
       <GridColorPicker
@@ -134,6 +145,15 @@
         onselect={handleFinePick}
       />
     </div>
+
+    <button
+      type="button"
+      class="confirm-btn"
+      style="background: rgb({finePreviewRgb.join(',')});color: {confirmTextColor};"
+      onclick={confirmFineSelection}
+    >
+      ✓ Submit this color
+    </button>
 
   {/if}
 </div>
@@ -201,13 +221,6 @@
     padding: 0.6rem 0.75rem;
     margin-bottom: 0.6rem;
     width: 100%;
-    text-align: left;
-    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
-  }
-  .selected-preview:hover:not([disabled]) {
-    border-color: #7aa9ff;
-    box-shadow: 0 0 0 1px rgba(122, 169, 255, 0.45);
-    transform: translateY(-1px);
   }
   .selected-preview-head {
     display: flex;
@@ -237,5 +250,26 @@
 
   .fine-grid-wrap {
     width: 100%;
+  }
+
+  .confirm-btn {
+    width: 100%;
+    margin-top: 0.6rem;
+    padding: 0.75em 1em;
+    border-radius: 12px;
+    border: none;
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
+    transition: filter 120ms ease, transform 80ms ease;
+  }
+  .confirm-btn:hover {
+    filter: brightness(1.12);
+    transform: translateY(-1px);
+  }
+  .confirm-btn:active {
+    transform: translateY(0);
   }
 </style>

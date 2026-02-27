@@ -36,6 +36,15 @@ export type GameDoc = {
   // Each guesser's submitted color
   roundGuesses: Record<string, Color>;
 
+  // Player IDs who voted to skip (force-advance) the current round
+  roundSkipVotes: string[];
+
+  // Game-wide timer setting chosen by host (null = no timer)
+  roundTimerSeconds: number | null;
+
+  // Epoch-ms deadline for the current guessing phase (null = no timer)
+  roundDeadline: number | null;
+
   // Picker's selected target color, saved as soon as it's chosen
   // so refreshes cannot lose the round.
   roundPickedColor: Color | null;

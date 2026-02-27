@@ -4,6 +4,7 @@ import {
   setDoc,
   updateDoc,
   onSnapshot,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Color, Difficulty, GameDoc, GameStatus, PlayerInfo, RoundResult } from './types';
@@ -132,6 +133,9 @@ export async function createGame(playerId: string, playerName: string): Promise<
     roundSeed: null,
     roundClue: null,
     roundGuesses: {},
+    roundSkipVotes: [],
+    roundTimerSeconds: null,
+    roundDeadline: null,
     roundPickedColor: null,
     roundTarget: null,
   };
@@ -170,15 +174,22 @@ export async function joinGame(
   return { ok: true };
 }
 
-export async function startGame(gameId: string, difficulty: Difficulty): Promise<void> {
+export async function startGame(
+  gameId: string,
+  difficulty: Difficulty,
+  timerSeconds: number | null,
+): Promise<void> {
   await updateDoc(doc(db, 'games', gameId), {
     status: 'picking' as GameStatus,
     difficulty,
+    roundTimerSeconds: timerSeconds,
     pickerIndex: 0,
     roundNumber: 1,
     roundSeed: Math.floor(Math.random() * 2 ** 31),
     roundClue: null,
     roundGuesses: {},
+    roundSkipVotes: [],
+    roundDeadline: null,
     roundPickedColor: null,
     roundTarget: null,
   });
@@ -191,12 +202,18 @@ export async function savePickedColor(gameId: string, color: Color): Promise<voi
   });
 }
 
-// Picker submits their 2-word clue.
-export async function submitClue(gameId: string, clue: string): Promise<void> {
+// Picker submits their 2-word clue. timerSeconds sets the deadline for this round.
+export async function submitClue(
+  gameId: string,
+  clue: string,
+  timerSeconds: number | null,
+): Promise<void> {
   await updateDoc(doc(db, 'games', gameId), {
     status: 'guessing' as GameStatus,
     roundClue: clue,
     roundGuesses: {},
+    roundSkipVotes: [],
+    roundDeadline: timerSeconds ? Date.now() + timerSeconds * 1000 : null,
     roundTarget: null,
   });
 }
@@ -240,7 +257,7 @@ export async function revealTarget(gameId: string, target: Color): Promise<void>
   });
 }
 
-// Host advances to the next round
+// Advances to the next round (works from reveal or guessing phase for force-skip)
 export async function nextRound(gameId: string): Promise<void> {
   const ref = doc(db, 'games', gameId);
   const snap = await getDoc(ref);
@@ -255,8 +272,23 @@ export async function nextRound(gameId: string): Promise<void> {
     roundSeed: Math.floor(Math.random() * 2 ** 31),
     roundClue: null,
     roundGuesses: {},
+    roundSkipVotes: [],
+    roundDeadline: null,
     roundPickedColor: null,
     roundTarget: null,
+    // roundTimerSeconds is intentionally kept — it's a game-wide setting
+  });
+}
+
+// Host updates the per-round timer setting (applies to future rounds)
+export async function setRoundTimer(gameId: string, seconds: number | null): Promise<void> {
+  await updateDoc(doc(db, 'games', gameId), { roundTimerSeconds: seconds });
+}
+
+// Any player can vote to skip the current round (e.g. if picker's machine died)
+export async function voteToSkip(gameId: string, playerId: string): Promise<void> {
+  await updateDoc(doc(db, 'games', gameId), {
+    roundSkipVotes: arrayUnion(playerId),
   });
 }
 

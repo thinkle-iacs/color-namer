@@ -8,6 +8,7 @@
     startGame,
     nextRound,
     setDifficulty,
+    setRoundTimer,
     computeResults,
     avatarColor,
   } from '$lib/game';
@@ -28,6 +29,15 @@
   let joinError = $state('');
   let joining = $state(false);
   let changingDifficulty = $state(false);
+  let changingTimer = $state(false);
+
+  const timerOptions: { label: string; seconds: number | null }[] = [
+    { label: 'Off', seconds: null },
+    { label: '30s', seconds: 30 },
+    { label: '1m', seconds: 60 },
+    { label: '90s', seconds: 90 },
+    { label: '2m', seconds: 120 },
+  ];
   let unsub: (() => void) | null = null;
   let sidebarOpen = $state(false);
 
@@ -127,6 +137,17 @@
       await setDifficulty(gameId, difficulty);
     } finally {
       changingDifficulty = false;
+    }
+  }
+
+  async function handleTimerChange(seconds: number | null): Promise<void> {
+    if (!game || !amHost) return;
+    if ((game.roundTimerSeconds ?? null) === seconds) return;
+    changingTimer = true;
+    try {
+      await setRoundTimer(gameId, seconds);
+    } finally {
+      changingTimer = false;
     }
   }
 </script>
@@ -234,6 +255,23 @@
             {/if}
           </div>
         </div>
+
+        <div class="difficulty-panel">
+          <div class="difficulty-label">Round timer</div>
+          <div class="difficulty-buttons">
+            {#each timerOptions as opt}
+              <button
+                class="diff-btn"
+                class:active={(game.roundTimerSeconds ?? null) === opt.seconds}
+                disabled={changingTimer}
+                onclick={() => handleTimerChange(opt.seconds)}
+              >
+                {opt.label}
+              </button>
+            {/each}
+          </div>
+          <div class="difficulty-note">Applies from the next guessing phase</div>
+        </div>
       {/if}
 
       <ul class="scoreboard">
@@ -257,7 +295,7 @@
           {game}
           {playerId}
           {gameId}
-          onStart={(difficulty) => startGame(gameId, difficulty)}
+          onStart={(difficulty, timer) => startGame(gameId, difficulty, timer)}
         />
       {:else if game.status === 'picking'}
         {#if amPicker}
@@ -268,6 +306,7 @@
             pickedColor={localPickedColor}
             difficulty={game.difficulty}
             roundSeed={game.roundSeed}
+            timerSeconds={game.roundTimerSeconds ?? null}
           />
         {:else}
           <div class="waiting-screen">

@@ -1,7 +1,7 @@
 <script lang="ts">
   import ColorPicker from './ColorPicker.svelte';
   import { labToRgb } from './labToRgb';
-  import { submitGuess, revealTarget } from './game';
+  import { submitGuess, revealTarget, voteToSkip, nextRound } from './game';
   import type { Color, GameDoc } from './types';
 
   const {
@@ -38,8 +38,89 @@
   let autoRevealTriggered = $state(false);
   let revealError = $state('');
 
+  // Timer countdown
+  let timeLeft = $state<number | null>(null); // seconds remaining, null = no timer
+  let timerExpiredFor = $state<number | null>(null); // deadline we already triggered for
+  let inProgressColor = $state<Color | null>(null); // live color from ColorPicker before confirm
+
+  // Skip voting
+  let skipVotes = $derived(game.roundSkipVotes ?? []);
+  let mySkipVote = $derived(skipVotes.includes(playerId));
+  let skipThreshold = $derived(Math.max(1, Math.ceil(totalGuessers / 2)));
+  // skipReady also fires when timer runs out (so force-reveal button appears)
+  let skipReady = $derived(
+    !game.roundTarget &&
+    (skipVotes.length >= skipThreshold || timeLeft === 0)
+  );
+  // Non-pickers can trigger reveal when all guesses are in OR timer expired (picker may be offline)
+  let canNonPickerReveal = $derived(
+    !amPicker &&
+    (allGuessersSubmitted || timeLeft === 0) &&
+    !!revealColor &&
+    !revealing &&
+    !game.roundTarget
+  );
+  let voting = $state(false);
+  let forceAdvancing = $state(false);
+
+  $effect(() => {
+    const deadline = game.roundDeadline ?? null;
+    // Reset on new deadline
+    inProgressColor = null;
+    if (!deadline) {
+      timeLeft = null;
+      return;
+    }
+    function tick() {
+      timeLeft = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    }
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  });
+
+  // When timer hits 0: picker auto-reveals; non-picker auto-submits in-progress color
+  $effect(() => {
+    if (
+      timeLeft !== 0 ||
+      game.roundTarget ||
+      !game.roundDeadline ||
+      timerExpiredFor === game.roundDeadline
+    ) return;
+    timerExpiredFor = game.roundDeadline;
+
+    if (amPicker) {
+      if (revealColor && !revealing) handleReveal(true);
+    } else if (!myGuess && inProgressColor) {
+      void handleGuess(inProgressColor);
+    }
+  });
+
   async function handleGuess(color: Color) {
     await submitGuess(gameId, playerId, color);
+  }
+
+  async function handleVoteSkip() {
+    voting = true;
+    try {
+      await voteToSkip(gameId, playerId);
+    } finally {
+      voting = false;
+    }
+  }
+
+  // Force the game forward — reveal if we have the color, skip to next round otherwise
+  async function handleForceAdvance() {
+    forceAdvancing = true;
+    try {
+      if (revealColor) {
+        await revealTarget(gameId, revealColor);
+      } else {
+        await nextRound(gameId);
+      }
+    } finally {
+      forceAdvancing = false;
+    }
   }
 
   async function handleReveal(auto = false) {
@@ -73,6 +154,15 @@
   <div class="clue-banner">
     <span class="clue-label">The clue</span>
     <span class="clue-text">"{game.roundClue}"</span>
+    {#if timeLeft !== null}
+      <div class="timer-display" class:timer-urgent={timeLeft <= 10} class:timer-done={timeLeft === 0}>
+        {#if timeLeft === 0}
+          ⏱ Time's up!
+        {:else}
+          ⏱ {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+        {/if}
+      </div>
+    {/if}
   </div>
 
   {#if amPicker}
@@ -125,6 +215,10 @@
         </button>
       {/if}
 
+      {#if skipVotes.length > 0 && !allGuessersSubmitted}
+        <p class="skip-notice">⚠ {skipVotes.length} player{skipVotes.length !== 1 ? 's' : ''} voted to skip</p>
+      {/if}
+
       {#if revealError}
         <p class="reveal-error">{revealError}</p>
       {/if}
@@ -143,14 +237,59 @@
         class="guess-swatch"
         style="background: rgb({labToRgb(myGuess.lightness, myGuess.a, myGuess.b).join(',')});"
       ></div>
-      <p class="waiting-msg">Waiting for {pickerName} to reveal…</p>
-      <p class="count">{guessCount}/{totalGuessers} guesses in</p>
+
+      {#if canNonPickerReveal}
+        <p class="all-in-nonpicker">All guesses are in!</p>
+        <button class="reveal-btn" disabled={revealing} onclick={() => handleReveal(false)}>
+          {revealing ? 'Revealing…' : 'Reveal answers →'}
+        </button>
+      {:else}
+        <p class="waiting-msg">Waiting for {pickerName} to reveal…</p>
+        <p class="count">{guessCount}/{totalGuessers} guesses in</p>
+      {/if}
+
+      <!-- Skip voting (for when picker's machine died mid-round) -->
+      {#if !allGuessersSubmitted}
+        <div class="skip-section">
+          {#if skipReady}
+            <p class="skip-ready-msg">Majority ready to skip!</p>
+            <button class="force-btn" disabled={forceAdvancing} onclick={handleForceAdvance}>
+              {forceAdvancing ? 'Moving on…' : revealColor ? 'Reveal & move on' : 'Skip this round'}
+            </button>
+          {:else if mySkipVote}
+            <p class="voted-msg">You voted to skip ({skipVotes.length}/{skipThreshold} needed)</p>
+          {:else}
+            <button class="skip-vote-btn" disabled={voting} onclick={handleVoteSkip}>
+              {voting ? 'Voting…' : 'Vote to skip this round'}
+            </button>
+            {#if skipVotes.length > 0}
+              <p class="skip-count">{skipVotes.length}/{skipThreshold} players ready to skip</p>
+            {/if}
+          {/if}
+        </div>
+      {/if}
     </div>
   {:else}
     <!-- Pick a color -->
     <div class="pick-area">
       <p class="prompt">Pick the color you think matches "{game.roundClue}"</p>
-      <ColorPicker onconfirm={handleGuess} />
+      {#key game.roundNumber}
+        <ColorPicker onconfirm={handleGuess} onchange={(c) => (inProgressColor = c)} />
+      {/key}
+      <!-- Skip option for when picker's machine died before everyone guessed -->
+      <div class="skip-section compact">
+        {#if skipReady}
+          <button class="force-btn" disabled={forceAdvancing} onclick={handleForceAdvance}>
+            {forceAdvancing ? 'Moving on…' : revealColor ? 'Reveal & move on' : 'Skip this round'}
+          </button>
+        {:else if mySkipVote}
+          <p class="voted-msg">You voted to skip ({skipVotes.length}/{skipThreshold} needed)</p>
+        {:else}
+          <button class="skip-link-btn" disabled={voting} onclick={handleVoteSkip}>
+            Game stuck? Vote to skip this round
+          </button>
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
@@ -191,6 +330,15 @@
     color: #fff;
     font-style: italic;
   }
+  .timer-display {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #888;
+    font-variant-numeric: tabular-nums;
+    margin-top: 0.1rem;
+  }
+  .timer-urgent { color: #f93; }
+  .timer-done { color: #f66; }
 
   /* Picker wait */
   .picker-wait {
@@ -268,6 +416,13 @@
     margin: 0;
   }
 
+  .skip-notice {
+    color: #f93;
+    font-size: 0.82rem;
+    margin: 0;
+    text-align: center;
+  }
+
   /* Already guessed */
   .already-guessed {
     display: flex;
@@ -281,8 +436,66 @@
     border-radius: 12px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   }
+  .all-in-nonpicker { color: #6f6; font-weight: bold; margin: 0; }
   .waiting-msg { color: #888; margin: 0; }
   .count { color: #666; font-size: 0.85rem; margin: 0; }
+
+  /* Skip voting */
+  .skip-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #2a2a2a;
+    width: 100%;
+    max-width: 320px;
+  }
+  .skip-section.compact {
+    margin-top: 0;
+    padding-top: 0.5rem;
+    border-top: 1px solid #222;
+  }
+  .skip-vote-btn {
+    font-size: 0.82rem;
+    padding: 0.45em 1.1em;
+    border-radius: 8px;
+    border: 1px solid #555;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .skip-vote-btn:hover:not([disabled]) { background: #2a2a2a; color: #ddd; }
+  .skip-vote-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+  .skip-link-btn {
+    font-size: 0.78rem;
+    padding: 0.35em 0.9em;
+    border-radius: 7px;
+    border: 1px solid #3a3a3a;
+    background: transparent;
+    color: #777;
+    cursor: pointer;
+  }
+  .skip-link-btn:hover:not([disabled]) { color: #bbb; border-color: #555; }
+  .skip-link-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+  .skip-count { font-size: 0.78rem; color: #666; margin: 0; }
+  .skip-ready-msg { font-size: 0.88rem; color: #f93; font-weight: 600; margin: 0; }
+  .voted-msg { font-size: 0.78rem; color: #777; margin: 0; font-style: italic; }
+  .force-btn {
+    font-size: 1rem;
+    padding: 0.6em 1.8em;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    background: linear-gradient(135deg, #f93, #f66);
+    color: #fff;
+    font-weight: 700;
+    transition: filter 0.15s;
+  }
+  .force-btn:hover:not([disabled]) { filter: brightness(1.15); }
+  .force-btn[disabled] { opacity: 0.35; cursor: not-allowed; }
 
   /* Pick area */
   .pick-area {

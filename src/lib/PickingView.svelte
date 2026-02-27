@@ -5,13 +5,14 @@
   import { savePickedColor, submitClue } from './game';
   import type { Color, Difficulty } from './types';
 
-  const { gameId, playerId, onColorPicked, pickedColor, difficulty, roundSeed } = $props<{
+  const { gameId, playerId, onColorPicked, pickedColor, difficulty, roundSeed, timerSeconds } = $props<{
     gameId: string;
     playerId: string;
     onColorPicked: (color: Color) => void;
     pickedColor: Color | null;
     difficulty: Difficulty;
     roundSeed: number | null;
+    timerSeconds: number | null;
   }>();
 
   // For Easy/Medium: track whether we're in pick or clue step
@@ -51,7 +52,7 @@
     if (!pickedColor) return;
     submitting = true;
     await savePickedColor(gameId, pickedColor);
-    await submitClue(gameId, clue);
+    await submitClue(gameId, clue, timerSeconds);
     submitting = false;
   }
 

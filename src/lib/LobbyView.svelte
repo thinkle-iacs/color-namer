@@ -5,11 +5,20 @@
     game: GameDoc;
     playerId: string;
     gameId: string;
-    onStart: (difficulty: Difficulty) => void;
+    onStart: (difficulty: Difficulty, timerSeconds: number | null) => void;
   }>();
 
   let copied = $state(false);
   let difficulty = $state<Difficulty>('easy');
+  let timerSeconds = $state<number | null>(null);
+
+  const timerOptions: { label: string; seconds: number | null }[] = [
+    { label: 'Off', seconds: null },
+    { label: '30s', seconds: 30 },
+    { label: '1m', seconds: 60 },
+    { label: '90s', seconds: 90 },
+    { label: '2m', seconds: 120 },
+  ];
 
   function copyLink() {
     navigator.clipboard.writeText(`${window.location.origin}/game/${gameId}`);
@@ -73,10 +82,24 @@
       <p class="diff-desc">{difficultyInfo[difficulty].desc}</p>
     </div>
 
+    <div class="timer-section">
+      <p class="label">Round timer</p>
+      <div class="timer-buttons">
+        {#each timerOptions as opt}
+          <button
+            class="diff-btn"
+            class:active={timerSeconds === opt.seconds}
+            onclick={() => (timerSeconds = opt.seconds)}
+          >{opt.label}</button>
+        {/each}
+      </div>
+      <p class="diff-desc">{timerSeconds ? `Auto-advance after ${timerSeconds}s` : 'No time limit'}</p>
+    </div>
+
     <button
       class="start-btn"
       disabled={!canStart}
-      onclick={() => onStart(difficulty)}
+      onclick={() => onStart(difficulty, timerSeconds)}
     >
       {canStart ? 'Start game' : 'Need at least 2 players'}
     </button>
@@ -201,6 +224,20 @@
   }
   .diff-btn.active { background: #2a2a3a; color: #fff; border-color: #6af; }
   .diff-btn:hover:not(.active) { border-color: #666; color: #ccc; }
+
+  .timer-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .timer-buttons {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 
   .diff-desc {
     font-size: 0.82rem;
