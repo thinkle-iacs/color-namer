@@ -21,7 +21,7 @@ const TIGHT = { grid: 5, span: 8 };
 
 // Page/hue config
 let numPages = $state(5);
-let hueStep = $state(5);
+let hueStep = $derived(phase === 'wide' ? 5 : 1);
 let currentPage = $state(2); // Math.floor(numPages / 2) where numPages = 5
 
 // Grid generator
