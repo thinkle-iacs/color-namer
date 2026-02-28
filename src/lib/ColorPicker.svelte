@@ -17,8 +17,8 @@
   // step 3 = TwoStepGridColorPicker wide phase
   // step 4 = TwoStepGridColorPicker tight phase (tracked via gridPhase)
   let step = $state<1 | 2 | 3>(1);
-  let gridPhase = $state<'wide' | 'tight'>('wide');
-  let displayStep = $derived(step === 3 && gridPhase === 'tight' ? 4 : step);
+  let gridPhase = $state<"wide" | "tight">("wide");
+  let displayStep = $derived(step === 3 && gridPhase === "tight" ? 4 : step);
 
   let step2Center = $state<Color>(INITIAL_COLOR); // set by step 1 click
   let step3Center = $state<Color>(INITIAL_COLOR); // set by step 2 click
@@ -81,7 +81,7 @@
   function goBack(): void {
     if (step === 3) {
       step = 2;
-      gridPhase = 'wide';
+      gridPhase = "wide";
       pendingFineSelection = null;
       finePreviewLightnessOverride = null;
     } else if (step === 2) {
@@ -91,7 +91,7 @@
 
   function reset(): void {
     step = 1;
-    gridPhase = 'wide';
+    gridPhase = "wide";
     step2Center = INITIAL_COLOR;
     step3Center = INITIAL_COLOR;
     pendingFineSelection = null;
@@ -112,7 +112,7 @@
           Pick the area your color is in
         {:else if step === 2}
           Select the gradient closest to your color
-        {:else if gridPhase === 'wide'}
+        {:else if gridPhase === "wide"}
           Hone in on the color
         {:else}
           Click to select your color
@@ -157,8 +157,12 @@
       <TwoStepGridColorPicker
         color={step3Center}
         selected={pendingFineSelection ?? step3Center}
-        onselect={c => { pendingFineSelection = c; finePreviewLightnessOverride = c.lightness; confirmFineSelection(); }}
-        onphasechange={(p) => gridPhase = p}
+        onselect={(c) => {
+          pendingFineSelection = c;
+          finePreviewLightnessOverride = c.lightness;
+          confirmFineSelection();
+        }}
+        onphasechange={(p) => (gridPhase = p)}
       />
     </div>
   {/if}
