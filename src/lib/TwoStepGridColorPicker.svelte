@@ -3,9 +3,8 @@ import { labStyle, lchToLab, labToLch, isInDisplayP3 } from './labToRgb';
 import type { Color } from './types';
 import HueStrip from './HueStrip.svelte';
 
-const { color, selected = null, onselect, onphasechange } = $props<{
+const { color, onselect, onphasechange } = $props<{
   color: Color;
-  selected?: Color | null;
   onselect: (color: Color) => void;
   onphasechange?: (phase: 'wide' | 'tight') => void;
 }>();
@@ -23,7 +22,7 @@ const TIGHT = { grid: 5, span: 8 };
 // Page/hue config
 let numPages = $state(5);
 let hueStep = $state(5);
-let currentPage = $state(Math.floor(numPages / 2));
+let currentPage = $state(2); // Math.floor(numPages / 2) where numPages = 5
 
 // Grid generator
 function makeGrid(center: Color, grid: number, span: number, hue: number) {
@@ -119,7 +118,9 @@ let grid = $derived.by(() => {
   return makeGrid(center, conf.grid, conf.span, hue);
 });
 
-function handleCellClick(cell) {
+type Cell = { l: number; a: number; b: number; style: string; isCenter: boolean; inGamut: boolean };
+
+function handleCellClick(cell: Cell) {
   if (phase === 'wide') {
     tightCenter = { lightness: cell.l, a: cell.a, b: cell.b };
     phase = 'tight';
@@ -162,17 +163,14 @@ function backToWide() {
 
       <div class="grid" style="grid-template-columns: repeat({phase === 'wide' ? WIDE.grid : TIGHT.grid}, 1fr);">
         {#each grid as cell}
-          <div
+          <button
             class="swatch"
             class:center-cell={cell.isCenter}
             class:out-of-gamut={!cell.inGamut}
             style={cell.style}
             onclick={() => handleCellClick(cell)}
-            tabindex="0"
             title="L={cell.l} a={cell.a} b={cell.b}{cell.inGamut ? '' : ' (clamped)'}"
-          >
-            <span class="cell-label">{cell.l},{cell.a},{cell.b}</span>
-          </div>
+          ></button>
         {/each}
       </div>
 
@@ -202,9 +200,7 @@ function backToWide() {
 .grid-row-with-sides > .grid { flex: 1; min-width: 0; }
 .grid { display: grid; gap: 2px; width: 100%; }
 .swatch { aspect-ratio: 1; width: 100%; border: none; padding: 0; border-radius: 3px; cursor: pointer; min-width: 24px; min-height: 24px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.swatch:hover { transform: scale(1.05); z-index: 1; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.7); }
-.cell-label { font-size: min(0.5rem, 1.8cqi); line-height: 1; color: rgba(255,255,255,0.85); text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,1); pointer-events: none; text-align: center; }
-.center-cell { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.85); }
+.swatch:hover { transform: scale(1.05); z-index: 1; box-shadow: 0 0 0 1.5px rgba(255,255,255,0.7); }.center-cell { box-shadow: inset 0 0 0 2px rgba(255,255,255,0.85); }
 .out-of-gamut::after { content: ''; position: absolute; inset: 0; border-radius: 3px; border: 1px dashed rgba(255,255,255,0.25); }
 .shift-btn { border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; font-size: 0.68rem; font-weight: 600; cursor: pointer; padding: 0.3em 0.8em; white-space: nowrap; text-shadow: 0 0 3px rgba(0,0,0,0.5); }
 .shift-btn:hover:not([disabled]) { filter: brightness(1.15); }

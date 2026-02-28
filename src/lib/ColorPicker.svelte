@@ -156,7 +156,7 @@
     <div class="fine-grid-wrap">
       <TwoStepGridColorPicker
         color={step3Center}
-        selected={pendingFineSelection ?? step3Center}
+
         onselect={(c) => {
           pendingFineSelection = c;
           finePreviewLightnessOverride = c.lightness;
