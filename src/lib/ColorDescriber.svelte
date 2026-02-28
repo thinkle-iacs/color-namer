@@ -1,134 +1,127 @@
 <script lang="ts">
-  import { labToRgb } from "./labToRgb";
-  import type { Color } from "./types";
-  import { isInvalid } from "./validateColorWord";
+  import { labToRgb } from './labToRgb';
+  import type { Color } from './types';
+  import { validateClue } from './validateColorWord';
 
   const { color, ondescribe } = $props<{
     color: Color;
-    ondescribe: (name: string) => void;
+    ondescribe: (clue: string) => void;
   }>();
-  let description = $state("");
-  let invalidMessage = $derived(isInvalid(description));
 
-  // Compute complementary LAB color
-  let complementaryColor = $derived({
-    lightness: color.lightness, // Keep lightness the same
-    a: -color.a, // Flip A value
-    b: -color.b, // Flip B value
-  });
+  let clue = $state('');
+  let error = $derived(validateClue(clue));
   let rgb = $derived(labToRgb(color.lightness, color.a, color.b));
+  let textColor = $derived(color.lightness < 50 ? 'white' : 'black');
+  let wordCount = $derived(clue.trim().split(/\s+/).filter((w) => w.length > 0).length);
 </script>
 
-<section>
-  <h1>{description || "Name that Color!"}</h1>
-  <label>
-    <b>Name the color in fewer than 64 characters:</b>
-    <input bind:value={description} type="text" />
-    {#if invalidMessage}
-      <p><b>{invalidMessage}</b></p>
+<div class="describer">
+  <div
+    class="swatch"
+    style="background: rgb({rgb[0]},{rgb[1]},{rgb[2]}); color: {textColor};"
+  >
+    {#if clue.trim()}
+      <span class="clue-preview">"{clue.trim()}"</span>
     {:else}
-      <p><b>&nbsp;</b></p>
+      <span class="placeholder">Your color</span>
     {/if}
+  </div>
+
+  <label class="label">
+    Give a <strong>two-word</strong> clue — no color names, no light/dark:
+    <input
+      type="text"
+      bind:value={clue}
+      placeholder="e.g. summer grass"
+      autocomplete="off"
+      spellcheck="true"
+    />
   </label>
-  <div class="swatch-container">
-    <div
-      class="swatch"
-      style:--color="rgb({rgb[0]}, {rgb[1]}, {rgb[2]})"
-      style:--text={color.lightness < 50 ? "white" : "black"}
-      style:--shadow={color.lightness < 50 ? "0 0 8px black" : "0 0 8px white"}
-    >
-      {#if description}
-        <h1>
-          &ldquo;{description}&rdquo;
-        </h1>
-      {/if}
-      <div>RGB: {rgb[0]}, {rgb[1]}, {rgb[2]}</div>
-      <div>LAB: {color.lightness}, {color.a}, {color.b}</div>
-    </div>
+
+  <div class="feedback">
+    {#if clue.trim() && error}
+      <span class="error">{error}</span>
+    {:else if wordCount === 2 && !error}
+      <span class="ok">Looks good!</span>
+    {:else if wordCount > 0}
+      <span class="hint">{wordCount}/2 words</span>
+    {:else}
+      <span class="hint">Type two words</span>
+    {/if}
   </div>
-  <div style="margin-top:1em;text-align:center;">
-    <button
-      disabled={!!invalidMessage || description.length === 0}
-      on:click={() => {
-        ondescribe(description);
-      }}
-    >
-      Submit
-    </button>
-  </div>
-</section>
+
+  <button
+    disabled={!!error || clue.trim().length === 0}
+    onclick={() => ondescribe(clue.trim())}
+  >
+    Lock in clue
+  </button>
+</div>
 
 <style>
-  button.hidden {
-    opacity: 0;
-  }
-  button {
-    opacity: 1;
-  }
-  button[disabled] {
-    opacity: 0.5;
-    filter: blur(2px);
-  }
-  section {
-    display: grid;
-    place-content: center;
-    width: 100vw;
-    height: 100vh;
-    position: fixed;
-    z-index: 2;
-    top: 0;
-    left: 0;
-    background: black;
-    color: white;
+  .describer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
   }
 
-  .swatch-container {
-    display: grid;
-    place-content: center;
-    padding: 3em;
-    background: linear-gradient(to bottom right, black, white);
-  }
   .swatch {
-    background-color: var(--color);
-    color: var(--text);
-    text-shadow: var(--shadow);
-    font-family:
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      Roboto,
-      Oxygen,
-      Ubuntu,
-      Cantarell,
-      "Open Sans",
-      "Helvetica Neue",
-      sans-serif;
-    min-width: 80px;
-    min-height: 80px;
-    padding: 16px;
+    width: 220px;
+    height: 140px;
     border-radius: 16px;
-    place-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    font-weight: bold;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  }
+
+  .clue-preview { font-style: italic; }
+  .placeholder { opacity: 0.4; font-style: italic; }
+
+  .label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 1rem;
+    text-align: center;
+    max-width: 400px;
+    width: 100%;
   }
 
   input {
-    display: block;
-    margin-top: 8px;
-    font-size: 2rem;
+    font-size: 1.6rem;
+    padding: 0.4em 0.6em;
+    border: 3px solid #555;
+    border-radius: 8px;
+    text-align: center;
+    width: 100%;
+    box-sizing: border-box;
   }
 
-  button {
-    background-color: var(--color);
-    border-color: var(--complementary-color);
-    border-width: 8px;
-    color: var(--text);
-    text-shadow: var(--shadow);
-    font-size: 2rem;
-    padding: 1em;
-    border-radius: 16px;
+  .feedback {
+    min-height: 1.5em;
+    font-size: 0.95rem;
   }
-  .directions {
-    margin-top: 4px;
-    font-style: italic;
+  .error  { color: #e55; font-weight: bold; }
+  .ok     { color: #4c4; font-weight: bold; }
+  .hint   { color: #999; }
+
+  button {
+    font-size: 1.2rem;
+    padding: 0.6em 2em;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 3px solid #333;
+    background: #222;
+    color: white;
+    transition: opacity 0.2s;
+  }
+  button[disabled] {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
 </style>

@@ -1,4 +1,4 @@
-export function labToRgb(l: number, a: number, b: number) {
+function labToRgbUnitUnclamped(l: number, a: number, b: number): [number, number, number] {
   let y = (l + 16) / 116;
   let x = a / 500 + y;
   let z = y - b / 200;
@@ -19,11 +19,359 @@ export function labToRgb(l: number, a: number, b: number) {
     green > 0.0031308 ? 1.055 * green ** (1 / 2.4) - 0.055 : 12.92 * green;
   blue = blue > 0.0031308 ? 1.055 * blue ** (1 / 2.4) - 0.055 : 12.92 * blue;
 
+  return [red, green, blue];
+}
+
+export function isLabDisplayable(l: number, a: number, b: number): boolean {
+  const [red, green, blue] = labToRgbUnitUnclamped(l, a, b);
+  return (
+    red >= 0 && red <= 1 &&
+    green >= 0 && green <= 1 &&
+    blue >= 0 && blue <= 1
+  );
+}
+
+export function labToRgb(l: number, a: number, b: number) {
+  const [red, green, blue] = labToRgbUnitUnclamped(l, a, b);
   return [
     Math.max(0, Math.min(255, Math.round(red * 255))),
     Math.max(0, Math.min(255, Math.round(green * 255))),
     Math.max(0, Math.min(255, Math.round(blue * 255))),
   ];
+}
+
+export function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
+  const rn = r / 255, gn = g / 255, bn = b / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, Math.round(l * 100)];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h: number;
+  if (max === rn) h = ((gn - bn) / d + (gn < bn ? 6 : 0)) / 6;
+  else if (max === gn) h = ((bn - rn) / d + 2) / 6;
+  else h = ((rn - gn) / d + 4) / 6;
+  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+}
+
+export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(100, s)) / 100;
+  const light = Math.max(0, Math.min(100, l)) / 100;
+
+  if (sat === 0) {
+    const v = Math.round(light * 255);
+    return [v, v, v];
+  }
+
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+  const hk = hue / 360;
+
+  function channel(t0: number): number {
+    let t = t0;
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+
+  return [
+    Math.round(channel(hk + 1 / 3) * 255),
+    Math.round(channel(hk) * 255),
+    Math.round(channel(hk - 1 / 3) * 255),
+  ];
+}
+
+// Mulberry32 seeded PRNG — returns a function that yields floats in [0, 1)
+function mulberry32(seed: number) {
+  return function (): number {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+type LabColor = { lightness: number; a: number; b: number };
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+function labDistance(c1: LabColor, c2: LabColor): number {
+  const dl = c1.lightness - c2.lightness;
+  const da = c1.a - c2.a;
+  const db = c1.b - c2.b;
+  return Math.sqrt(dl * dl + da * da + db * db);
+}
+
+// Allow richer chroma in middle lightness; taper near black/white.
+function maxChromaForLightness(lightness: number): number {
+  const edge = Math.abs(lightness - 50) / 50; // 0 in middle, 1 at extremes
+  return 90 - edge * 70; // ~90 at mid, ~20 near ends
+}
+
+function sampleLabCandidate(rand: () => number): LabColor {
+  const lightness = Math.round(8 + rand() * 86); // 8–94
+  const maxC = maxChromaForLightness(lightness);
+  const minC = Math.min(12, maxC * 0.55);
+  const chroma = minC + rand() * (maxC - minC);
+  const angle = rand() * Math.PI * 2;
+  return {
+    lightness,
+    a: Math.round(chroma * Math.cos(angle)),
+    b: Math.round(chroma * Math.sin(angle)),
+  };
+}
+
+function isGamutSafe(color: LabColor): boolean {
+  const [r, g, bl] = labToRgb(color.lightness, color.a, color.b);
+  const [l2, a2, b2] = rgbToLab(r, g, bl);
+  return (
+    Math.abs(color.lightness - l2) <= 5 &&
+    Math.abs(color.a - a2) <= 9 &&
+    Math.abs(color.b - b2) <= 9
+  );
+}
+
+// ── Display P3 gamut support ─────────────────────────────────────────────────
+// XYZ D65 → linear Display P3 (via the standard ICC P3-D65 matrix)
+function labToDisplayP3Unclamped(l: number, a: number, b: number): [number, number, number] {
+  let fy = (l + 16) / 116;
+  let fx = a / 500 + fy;
+  let fz = fy - b / 200;
+  const x = 95.047  * (fx ** 3 > 0.008856 ? fx ** 3 : (fx - 16 / 116) / 7.787);
+  const y = 100.0   * (fy ** 3 > 0.008856 ? fy ** 3 : (fy - 16 / 116) / 7.787);
+  const z = 108.883 * (fz ** 3 > 0.008856 ? fz ** 3 : (fz - 16 / 116) / 7.787);
+  const xn = x / 100, yn = y / 100, zn = z / 100;
+  let r  =  2.4934969 * xn - 0.9313836 * yn - 0.4027108 * zn;
+  let g  = -0.8294890 * xn + 1.7626641 * yn + 0.0236247 * zn;
+  let bv =  0.0358458 * xn - 0.0761724 * yn + 0.9568845 * zn;
+  r  = r  > 0.0031308 ? 1.055 * r  ** (1 / 2.4) - 0.055 : 12.92 * r;
+  g  = g  > 0.0031308 ? 1.055 * g  ** (1 / 2.4) - 0.055 : 12.92 * g;
+  bv = bv > 0.0031308 ? 1.055 * bv ** (1 / 2.4) - 0.055 : 12.92 * bv;
+  return [r, g, bv];
+}
+
+// Returns true if the LAB color is within the Display P3 gamut.
+export function isInDisplayP3(l: number, a: number, b: number): boolean {
+  const [r, g, bv] = labToDisplayP3Unclamped(l, a, b);
+  return r >= -0.001 && r <= 1.001 && g >= -0.001 && g <= 1.001 && bv >= -0.001 && bv <= 1.001;
+}
+
+// Project an out-of-gamut LAB color to the nearest Display P3-displayable LAB
+// by reducing chroma while preserving lightness and hue direction.
+export function normalizeLabToDisplayP3(color: LabColor): LabColor {
+  const lightness = clamp(Math.round(color.lightness), 0, 100);
+  const a = clamp(color.a, -128, 127);
+  const b = clamp(color.b, -128, 127);
+  const candidate: LabColor = { lightness, a: Math.round(a), b: Math.round(b) };
+  if (isInDisplayP3(candidate.lightness, candidate.a, candidate.b)) return candidate;
+  const hue = Math.atan2(b, a);
+  const chroma = Math.sqrt(a * a + b * b);
+  let low = 0, high = chroma;
+  for (let i = 0; i < 20; i++) {
+    const mid = (low + high) / 2;
+    const projected: LabColor = {
+      lightness,
+      a: Math.round(mid * Math.cos(hue)),
+      b: Math.round(mid * Math.sin(hue)),
+    };
+    if (isInDisplayP3(projected.lightness, projected.a, projected.b)) low = mid;
+    else high = mid;
+  }
+  return { lightness, a: Math.round(low * Math.cos(hue)), b: Math.round(low * Math.sin(hue)) };
+}
+
+// Project an arbitrary LAB color to a nearby sRGB-displayable LAB color.
+// Keeps lightness and hue direction whenever possible, reducing chroma first.
+export function normalizeLabToGamut(color: LabColor): LabColor {
+  const lightness = clamp(Math.round(color.lightness), 0, 100);
+  const a = clamp(color.a, -128, 127);
+  const b = clamp(color.b, -128, 127);
+  const candidate: LabColor = { lightness, a: Math.round(a), b: Math.round(b) };
+  if (isGamutSafe(candidate)) return candidate;
+
+  const hue = Math.atan2(b, a);
+  const chroma = Math.sqrt(a * a + b * b);
+  let low = 0;
+  let high = chroma;
+
+  for (let i = 0; i < 18; i++) {
+    const mid = (low + high) / 2;
+    const projected: LabColor = {
+      lightness,
+      a: Math.round(mid * Math.cos(hue)),
+      b: Math.round(mid * Math.sin(hue)),
+    };
+    if (isGamutSafe(projected)) low = mid;
+    else high = mid;
+  }
+
+  const best: LabColor = {
+    lightness,
+    a: Math.round(low * Math.cos(hue)),
+    b: Math.round(low * Math.sin(hue)),
+  };
+
+  // Snap to actual rendered LAB so follow-up zoom centers match what users see.
+  const [r, g, bl] = labToRgb(best.lightness, best.a, best.b);
+  const [l2, a2, b2] = rgbToLab(r, g, bl);
+  return { lightness: l2, a: a2, b: b2 };
+}
+
+// Generate `count` varied, sRGB-gamut-safe LAB colors from a seed.
+// The same seed always produces the same colors (deterministic).
+export function generateColorOptions(seed: number, count: number): Array<{ lightness: number; a: number; b: number }> {
+  const rand = mulberry32(seed);
+  const pool: LabColor[] = [];
+  let attempts = 0;
+  const maxAttempts = Math.max(300, count * 260);
+  const targetPoolSize = Math.max(count * 36, 60);
+
+  while (pool.length < targetPoolSize && attempts < maxAttempts) {
+    attempts++;
+    const candidate = sampleLabCandidate(rand);
+    if (!isGamutSafe(candidate)) continue;
+    // Keep pool reasonably de-duped so final picks spread better.
+    if (pool.some((c) => labDistance(c, candidate) < 6)) continue;
+    pool.push(candidate);
+  }
+
+  const selected: LabColor[] = [];
+  const used = new Set<number>();
+
+  if (pool.length > 0) {
+    const firstIdx = Math.floor(rand() * pool.length);
+    selected.push(pool[firstIdx]);
+    used.add(firstIdx);
+  }
+
+  // Farthest-point selection with a lightness-spread bonus.
+  while (selected.length < count && used.size < pool.length) {
+    let bestIdx = -1;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < pool.length; i++) {
+      if (used.has(i)) continue;
+      const candidate = pool[i];
+
+      let minLabDist = Infinity;
+      let minLightDist = Infinity;
+      for (const chosen of selected) {
+        minLabDist = Math.min(minLabDist, labDistance(candidate, chosen));
+        minLightDist = Math.min(minLightDist, Math.abs(candidate.lightness - chosen.lightness));
+      }
+      // For the very first loop when selected is empty (defensive).
+      if (!isFinite(minLabDist)) minLabDist = 0;
+      if (!isFinite(minLightDist)) minLightDist = 0;
+
+      const score = minLabDist + minLightDist * 0.45;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = i;
+      }
+    }
+
+    if (bestIdx === -1) break;
+    selected.push(pool[bestIdx]);
+    used.add(bestIdx);
+  }
+
+  // Fallback: deterministic, gamut-safe fillers if pool was unexpectedly sparse.
+  while (selected.length < count) {
+    const step = selected.length;
+    const lightness = 20 + ((step * 37) % 70);
+    const maxC = maxChromaForLightness(lightness);
+    const chroma = maxC * 0.35;
+    const angle = (step * 2.399963229728653) % (Math.PI * 2); // golden angle
+    const candidate: LabColor = {
+      lightness,
+      a: Math.round(chroma * Math.cos(angle)),
+      b: Math.round(chroma * Math.sin(angle)),
+    };
+    if (isGamutSafe(candidate)) {
+      selected.push(candidate);
+    } else {
+      selected.push({ lightness, a: 0, b: 0 });
+    }
+  }
+
+  return selected.slice(0, count);
+}
+
+// ── LCH utilities ────────────────────────────────────────────────────────────
+// LCH is LAB in polar coordinates: C = chroma (distance from neutral),
+// H = hue angle in degrees. Distances are identical to LAB distances.
+
+/** Convert LCH to the LAB (a, b) components. L passes through unchanged. */
+export function lchToLab(L: number, C: number, hueDeg: number): [number, number, number] {
+  const h = (hueDeg * Math.PI) / 180;
+  return [L, C * Math.cos(h), C * Math.sin(h)];
+}
+
+/** Convert LAB to LCH. Returns [L, C, hueDeg] where hueDeg is in [0, 360). */
+export function labToLch(L: number, a: number, b: number): [number, number, number] {
+  const C = Math.sqrt(a * a + b * b);
+  const H = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+  return [L, C, H];
+}
+
+/** Binary search for max Display-P3 chroma at a given lightness and hue angle (degrees). */
+export function findMaxChromaP3(L: number, hueDeg: number): number {
+  const h = (hueDeg * Math.PI) / 180;
+  let lo = 0, hi = 160;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (isInDisplayP3(L, mid * Math.cos(h), mid * Math.sin(h))) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Returns a CSS gradient string spanning from (L1,C1,H1) to (L2,C2,H2) in LCH,
+ * with an sRGB rgb() fallback before the lch() declaration.
+ */
+export function lchGradientStyle(
+  L1: number, C1: number, H1: number,
+  L2: number, C2: number, H2: number,
+  direction = '135deg',
+): string {
+  const [, a1, b1] = lchToLab(L1, C1, H1);
+  const [, a2, b2] = lchToLab(L2, C2, H2);
+  const [r1, g1, bv1] = labToRgb(L1, a1, b1);
+  const [r2, g2, bv2] = labToRgb(L2, a2, b2);
+  return [
+    `background:linear-gradient(${direction},rgb(${r1},${g1},${bv1}),rgb(${r2},${g2},${bv2}))`,
+    `background:linear-gradient(${direction},lch(${L1} ${C1.toFixed(1)} ${H1.toFixed(1)}),lch(${L2} ${C2.toFixed(1)} ${H2.toFixed(1)}))`,
+  ].join(';');
+}
+
+/** Returns an inline style string for a flat LCH color, with rgb() fallback. */
+export function lchStyle(L: number, C: number, hueDeg: number): string {
+  const [, a, b] = lchToLab(L, C, hueDeg);
+  const [r, g, bv] = labToRgb(L, a, b);
+  return `background:rgb(${r},${g},${bv});background:lch(${L} ${C.toFixed(1)} ${hueDeg.toFixed(1)})`;
+}
+
+// Returns an inline style string with rgb() fallback and native lab() for modern browsers.
+// Use as: style={labStyle(l, a, b)} — the duplicate property trick lets modern browsers
+// pick the lab() declaration while older ones fall back to rgb().
+export function labStyle(
+  l: number,
+  a: number,
+  b: number,
+  property = 'background'
+): string {
+  const [r, g, bl] = labToRgb(l, a, b);
+  return `${property}:rgb(${r},${g},${bl});${property}:lab(${l} ${a} ${b})`;
 }
 
 export function rgbToLab(r: number, g: number, b: number) {

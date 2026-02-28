@@ -1,104 +1,64 @@
-// Core Data Types
+// LAB color (matches existing ColorPicker internal format)
 export type Color = {
-  lightness: number;
-  a: number;
-  b: number;
+  lightness: number; // L* 0–100
+  a: number;         // a* -128 to 128
+  b: number;         // b* -128 to 128
 };
 
-export type Player = {
-  id: string;
+export type GameStatus = 'lobby' | 'picking' | 'guessing' | 'reveal';
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+export type PlayerInfo = {
   name: string;
-  color: Color;
-  guess: Color | null;
-  connected: boolean;
+  score: number;
+  avatarColor: string; // css hsl() string for the player dot
+  order: number;       // join order (0-based), used for picker rotation
 };
 
-export type GameStateType =
-  | "WAITING_FOR_PLAYERS"
-  | "WAITING_FOR_COLOR"
-  | "GUESSING"
-  | "REVEAL";
+// The Firestore document stored at games/{gameId}
+export type GameDoc = {
+  status: GameStatus;
+  hostId: string;
+  difficulty: Difficulty;
+  pickerIndex: number;           // index into playerOrder
+  roundNumber: number;
+  createdAt: number;
+  playerOrder: string[];         // player IDs in turn order
+  players: Record<string, PlayerInfo>;
 
-export type GameState = {
-  id: string;
-  players: Player[];
-  currentColor: Color | null;
-  clue: string;
-  state: GameStateType;
-  lastActivity?: number;
-  currentPlayerIndex: number;
+  // Seed for deterministic color generation (Medium/Hard modes)
+  roundSeed: number | null;
+
+  // Set when picker submits their clue (picking → guessing)
+  roundClue: string | null;
+
+  // Each guesser's submitted color
+  roundGuesses: Record<string, Color>;
+
+  // Player IDs who voted to skip (force-advance) the current round
+  roundSkipVotes: string[];
+
+  // Game-wide timer setting chosen by host (null = no timer)
+  roundTimerSeconds: number | null;
+
+  // Epoch-ms deadline for the current guessing phase (null = no timer)
+  roundDeadline: number | null;
+
+  // Picker's selected target color, saved as soon as it's chosen
+  // so refreshes cannot lose the round.
+  roundPickedColor: Color | null;
+
+  // Only set when picker reveals (guessing → reveal)
+  roundTarget: Color | null;
 };
 
-// Client → Server Messages
-export type ClientMessage =
-  | {
-      type: "GET_GAME_STATE";
-      gameId: string;
-    }
-  | {
-      type: "JOIN_GAME";
-      name: string;
-      color: Color;
-      gameId?: string;
-    }
-  | {
-      type: "LEAVE_GAME";
-      playerId: string;
-      gameId: string;
-    }
-  | {
-      type: "START_GAME";
-      gameId: string;
-    }
-  | {
-      type: "SET_COLOR";
-      color: Color;
-      clue?: string;
-    }
-  | {
-      type: "SUBMIT_GUESS";
-      color: Color;
-    }
-  | {
-      type: "NEXT_ROUND";
-    }
-  | {
-      type: "RECONNECT";
-      playerId: string;
-      gameId: string;
-      name?: string;
-      color?: Color;
-    }
-  | {
-      type: "HEARTBEAT";
-    };
-
-// Server → Client Messages
-export type ServerMessage =
-  | {
-      type: "GAME_STATE";
-      gameState: GameState;
-    }
-  | {
-      type: "CONNECTED";
-      gameId: string;
-      playerId: string;
-    }
-  | {
-      type: "RECONNECTED";
-      gameId: string;
-      playerId: string;
-    }
-  | {
-      type: "GAME_UPDATE";
-      gameState: GameState;
-    }
-  | {
-      type: "ERROR";
-      message: string;
-    }
-  | {
-      type: "CONFIRMATION";
-      messageType: ClientMessage["type"];
-      timestamp: number;
-    };
+// Computed round result for one player
+export type RoundResult = {
+  playerId: string;
+  name: string;
+  avatarColor: string;
+  guessedColor: Color;
+  distance: number;
+  pointsEarned: number;
+};

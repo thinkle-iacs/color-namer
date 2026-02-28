@@ -1,177 +1,161 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { labToRgb } from "./labToRgb";
+  import { labToRgb, isInDisplayP3 } from './labToRgb';
 
-  // ✅ Svelte 5 props
+  const COLS = 7;
+  const ROWS = 7;
+
   const {
     center = { lightness: 50, a: 0, b: 0 },
     zoom = 1,
-    height = 600,
+    selection = null,
     onselect,
   } = $props<{
     center: { lightness: number; a: number; b: number };
-    zoom: number; // 1 = Full space, 2 = Half space, 8 = 1/8th space, etc.
-    onselect: (selectedColor: {
-      lightness: number;
-      a: number;
-      b: number;
-    }) => void;
+    zoom: number;
+    selection?: { lightness: number; a: number; b: number } | null;
+    onselect: (selectedColor: { lightness: number; a: number; b: number }) => void;
   }>();
 
-  let lightness = $state(center.lightness);
-  let lightnessSlider: HTMLDivElement;
-  let gradientCanvas: HTMLCanvasElement;
+  let range = $derived(128 / zoom);
 
-  function updateLightness(clientY: number) {
-    if (!lightnessSlider) return;
-    const rect = lightnessSlider.getBoundingClientRect();
-    let offsetY = Math.max(0, Math.min(rect.height, clientY - rect.top));
-    lightness = Math.round(100 - (offsetY / rect.height) * 100); // Invert slider direction
-    drawLabGradient();
+  // Half-width of one cell in LAB a and b units
+  let cellHalfA = $derived(range / COLS);
+  let cellHalfB = $derived(range / ROWS);
+
+  function clampLab(v: number): number {
+    return Math.max(-128, Math.min(127, Math.round(v)));
   }
 
-  function startDragging(e: MouseEvent | TouchEvent) {
-    e.preventDefault();
-
-    function moveHandler(event: MouseEvent | TouchEvent) {
-      let clientY =
-        event instanceof MouseEvent ? event.clientY : event.touches[0].clientY;
-      updateLightness(clientY);
+  // Find the lightness nearest to preferredL where (a, b) is in Display P3 gamut.
+  // This lets each cell display at its natural lightness: yellow cells use high L,
+  // blue cells use moderate L, so every cell shows a real color rather than going dark.
+  function findBestL(a: number, b: number, preferredL: number): number {
+    const base = Math.max(0, Math.min(100, Math.round(preferredL)));
+    if (isInDisplayP3(base, a, b)) return base;
+    for (let delta = 1; delta <= 50; delta++) {
+      if (base + delta <= 100 && isInDisplayP3(base + delta, a, b)) return base + delta;
+      if (base - delta >= 0   && isInDisplayP3(base - delta, a, b)) return base - delta;
     }
-
-    function stopDragging() {
-      window.removeEventListener("mousemove", moveHandler);
-      window.removeEventListener("mouseup", stopDragging);
-      window.removeEventListener("touchmove", moveHandler);
-      window.removeEventListener("touchend", stopDragging);
-    }
-
-    window.addEventListener("mousemove", moveHandler);
-    window.addEventListener("mouseup", stopDragging);
-    window.addEventListener("touchmove", moveHandler, { passive: false });
-    window.addEventListener("touchend", stopDragging);
-
-    let clientY = e instanceof MouseEvent ? e.clientY : e.touches[0].clientY;
-    updateLightness(clientY);
+    return base; // truly out of gamut — will show as clamped gray
   }
 
-  function handleClickOnGradient(event: MouseEvent) {
-    if (!gradientCanvas) return;
-    const rect = gradientCanvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-
-    // ✅ New absolute zoom calculation
-    const range = 128 / zoom;
-    const a = center.a - range + (x / rect.width) * (range * 2);
-    const b = center.b + range - (y / rect.height) * (range * 2);
-
-    const selectedColor = { lightness, a: Math.round(a), b: Math.round(b) };
-    onselect(selectedColor);
+  // Diagonal gradient across the cell's a/b region at the given L.
+  function cellStyle(rawA: number, rawB: number, L: number): string {
+    const aLo = clampLab(rawA - cellHalfA);
+    const aHi = clampLab(rawA + cellHalfA);
+    const bLo = clampLab(rawB - cellHalfB);
+    const bHi = clampLab(rawB + cellHalfB);
+    const [r1, g1, b1] = labToRgb(L, aLo, bHi); // top-left corner
+    const [r2, g2, b2] = labToRgb(L, aHi, bLo); // bottom-right corner
+    return [
+      `background:linear-gradient(135deg,rgb(${r1},${g1},${b1}),rgb(${r2},${g2},${b2}))`,
+      `background:linear-gradient(135deg,lab(${L} ${aLo} ${bHi}),lab(${L} ${aHi} ${bLo}))`,
+    ].join(';');
   }
 
-  function drawLabGradient() {
-    if (!gradientCanvas) return;
-    const ctx = gradientCanvas.getContext("2d");
-    if (!ctx) return;
+  type CellData = { a: number; b: number; lightness: number; style: string };
 
-    const width = gradientCanvas.width;
-    const height = gradientCanvas.height;
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const data = imageData.data;
-
-    // ✅ Define LAB range proportionally based on zoom level
-    const range = 128 / zoom;
-
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const a = center.a - range + (x / width) * (range * 2);
-        const b = center.b + range - (y / height) * (range * 2);
-        const rgb = labToRgb(lightness, a, b);
-
-        const index = (y * width + x) * 4;
-        data[index] = rgb[0];
-        data[index + 1] = rgb[1];
-        data[index + 2] = rgb[2];
-        data[index + 3] = 255;
+  let cells = $derived.by((): CellData[] => {
+    const out: CellData[] = [];
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const rawA = center.a - range + ((col + 0.5) / COLS) * (range * 2);
+        const rawB = center.b + range - ((row + 0.5) / ROWS) * (range * 2);
+        const a = clampLab(rawA);
+        const b = clampLab(rawB);
+        const lightness = findBestL(a, b, center.lightness);
+        out.push({ a, b, lightness, style: cellStyle(rawA, rawB, lightness) });
       }
     }
+    return out;
+  });
 
-    ctx.putImageData(imageData, 0, 0);
-  }
-
-  onMount(() => {
-    drawLabGradient();
+  let selectedCellIndex = $derived.by(() => {
+    if (!selection) return null;
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < cells.length; i++) {
+      const da = selection.a - cells[i].a;
+      const db = selection.b - cells[i].b;
+      const dl = selection.lightness - cells[i].lightness;
+      const dist = da * da + db * db + dl * dl;
+      if (dist < bestDist) { bestDist = dist; best = i; }
+    }
+    return best >= 0 ? best : null;
   });
 </script>
 
-<!-- ✅ Now zoom and center affect the LAB display dynamically -->
-<h2>Zoom level: {zoom}</h2>
-<div class="lab-selector" style:--height="{height}px">
-  <!-- Lightness Slider -->
-  <div
-    class="lightness-slider"
-    bind:this={lightnessSlider}
-    aria-roledescription="slider"
-    onmousedown={startDragging}
-    ontouchstart={startDragging}
-  >
-    <div
-      class="slider-thumb"
-      tabindex="0"
-      onkeydown={(e) => {
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          lightness = Math.min(100, lightness + 1);
-        } else if (e.key === "ArrowDown") {
-          e.preventDefault();
-          lightness = Math.max(0, lightness - 1);
-        }
-        drawLabGradient();
-      }}
-      style="top: calc({100 - lightness}% - 2px);"
-    ></div>
-  </div>
+<div class="gradient-picker">
+  <div class="grid-wrap">
+    <span class="axis top">+b yellow</span>
+    <span class="axis bottom">−b blue</span>
+    <span class="axis left">−a green</span>
+    <span class="axis right">+a red</span>
 
-  <!-- Lab a/b Gradient Box (Canvas) -->
-  <canvas
-    bind:this={gradientCanvas}
-    width="500"
-    height="500"
-    onclick={handleClickOnGradient}
-  ></canvas>
+    <div class="grid">
+      {#each cells as cell, i}
+        <button
+          class="swatch"
+          class:selected={selectedCellIndex === i}
+          style={cell.style}
+          aria-label="L {cell.lightness} a {cell.a} b {cell.b}"
+          onclick={() => onselect({ lightness: cell.lightness, a: cell.a, b: cell.b })}
+        ></button>
+      {/each}
+    </div>
+  </div>
 </div>
 
 <style>
-  .lab-selector {
+  .gradient-picker {
     width: 100%;
-    height: 100%;
-    display: grid;
-    grid-template-columns: 32px auto;
   }
 
-  .lightness-slider {
+  .grid-wrap {
     position: relative;
-    height: var(--height);
-    box-sizing: border-box;
-    width: 32px;
-    background: linear-gradient(to top, black, white);
-    user-select: none;
+    width: 100%;
   }
 
-  .slider-thumb {
-    position: absolute;
-    left: 0;
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
     width: 100%;
-    height: 4px;
-    background: rgb(133, 133, 133);
-    border: 1px solid white;
+  }
+
+  .swatch {
+    aspect-ratio: 1;
+    width: 100%;
+    border: none;
+    padding: 0;
+    border-radius: 2px;
     cursor: pointer;
   }
-
-  canvas {
-    width: var(--height);
-    height: var(--height);
-    display: block;
+  .swatch:hover {
+    transform: scale(1.1);
+    z-index: 1;
+    position: relative;
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.75);
   }
+  .swatch.selected {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2), 0 0 0 4px #77b6ff;
+    z-index: 2;
+    position: relative;
+  }
+  /* Axis labels — positioned inside grid-wrap */
+  .axis {
+    position: absolute;
+    font-size: 0.6rem;
+    font-weight: 600;
+    pointer-events: none;
+    opacity: 0.78;
+    text-align: center;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.7);
+    line-height: 1;
+    z-index: 10;
+  }
+  .axis.top    { top: 5px;    left: 50%; transform: translateX(-50%); color: #ffe066; }
+  .axis.bottom { bottom: 5px; left: 50%; transform: translateX(-50%); color: #88aaff; }
+  .axis.left   { left: 6px;   top: 50%;  transform: translateY(-50%); color: #88dd88; }
+  .axis.right  { right: 6px;  top: 50%;  transform: translateY(-50%); color: #ff9999; }
 </style>
