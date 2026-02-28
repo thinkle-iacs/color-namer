@@ -24,19 +24,27 @@
   }
 
   function randomGuessNear(tgt: Color): Color {
-    const θ = Math.random() * Math.PI * 2;
-    const φ = Math.acos(2 * Math.random() - 1);
-    const dL = Math.cos(φ);
-    const da = Math.sin(φ) * Math.cos(θ);
-    const db = Math.sin(φ) * Math.sin(θ);
-    const mag = 5 + Math.random() * 45;
-    for (let scale = mag; scale > 2; scale *= 0.8) {
-      const L = clamp(Math.round(tgt.lightness + dL * scale), 1, 99);
-      const a = Math.round(tgt.a + da * scale);
-      const b = Math.round(tgt.b + db * scale);
-      if (isInDisplayP3(L, a, b)) return { lightness: L, a, b };
+    // Try up to 8 random directions before falling back
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const θ = Math.random() * Math.PI * 2;
+      const φ = Math.acos(2 * Math.random() - 1);
+      const dL = Math.cos(φ);
+      const da = Math.sin(φ) * Math.cos(θ);
+      const db = Math.sin(φ) * Math.sin(θ);
+      const mag = 5 + Math.random() * 45;
+      for (let scale = mag; scale > 2; scale *= 0.8) {
+        const L = clamp(Math.round(tgt.lightness + dL * scale), 1, 99);
+        const a = Math.round(tgt.a + da * scale);
+        const b = Math.round(tgt.b + db * scale);
+        if (isInDisplayP3(L, a, b)) return { lightness: L, a, b };
+      }
     }
-    return { ...tgt };
+    // All random directions failed (color is at gamut edge) — nudge toward neutral
+    const offset = 10 + Math.random() * 20;
+    const L = clamp(Math.round(tgt.lightness + (Math.random() - 0.5) * offset), 1, 99);
+    const a = Math.round(tgt.a * 0.5);
+    const b = Math.round(tgt.b * 0.5);
+    return { lightness: L, a, b };
   }
 
   let target = $state<Color>({ lightness: 55, a: 15, b: -35 });

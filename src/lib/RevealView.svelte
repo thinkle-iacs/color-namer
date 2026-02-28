@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { labToRgb, rgbToHsl } from './labToRgb';
+  import { labToRgb, rgbToHsl, labToLch } from './labToRgb';
   import {
     computeResults,
     pickerScore,
@@ -54,30 +54,68 @@
     toLabColor: string;
   };
 
+  // Names the hue zone of a given LCH hue angle.
+  function hueName(h: number): string {
+    h = ((h % 360) + 360) % 360;
+    if (h < 18)  return 'red';
+    if (h < 45)  return 'orange';
+    if (h < 70)  return 'yellow';
+    if (h < 100) return 'yellow-green';
+    if (h < 150) return 'green';
+    if (h < 195) return 'teal';
+    if (h < 230) return 'cyan';
+    if (h < 260) return 'blue';
+    if (h < 290) return 'indigo';
+    if (h < 320) return 'purple';
+    if (h < 345) return 'pink';
+    return 'red';
+  }
+
   function colorBlurb(guess: Color, tgt: Color): string {
     const dL = guess.lightness - tgt.lightness;
     const da = guess.a - tgt.a;
     const db = guess.b - tgt.b;
-    const dist = Math.sqrt(dL * dL + da * da + db * db);
+    const labDist = Math.sqrt(dL * dL + da * da + db * db);
+    if (labDist < 5) return 'near perfect!';
 
-    if (dist < 5) return 'near perfect!';
+    const [, gC, gH] = labToLch(guess.lightness, guess.a, guess.b);
+    const [, tC, tH] = labToLch(tgt.lightness, tgt.a, tgt.b);
+    const dC = gC - tC;
+    // Signed hue difference in (-180, 180]
+    const dH = ((gH - tH + 540) % 360) - 180;
+    // Only comment on hue when both colors are chromatic enough for hue to be meaningful
+    const bothChromatic = Math.min(gC, tC) > 8;
 
     const parts: string[] = [];
 
+    // Lightness
     if (Math.abs(dL) > 15) parts.push(dL > 0 ? 'way too light' : 'way too dark');
     else if (Math.abs(dL) > 7) parts.push(dL > 0 ? 'too light' : 'too dark');
     else if (Math.abs(dL) > 3) parts.push(dL > 0 ? 'a touch light' : 'a touch dark');
 
-    const absA = Math.abs(da);
-    const absB = Math.abs(db);
-    if (absA >= absB && absA > 5) {
-      if (absA > 20) parts.push(da > 0 ? 'much too red' : 'much too green');
-      else if (absA > 10) parts.push(da > 0 ? 'too red' : 'too green');
-      else parts.push(da > 0 ? 'a bit redder' : 'a bit greener');
-    } else if (absB > absA && absB > 5) {
-      if (absB > 20) parts.push(db > 0 ? 'much too yellow' : 'much too blue');
-      else if (absB > 10) parts.push(db > 0 ? 'too yellow' : 'too blue');
-      else parts.push(db > 0 ? 'a bit yellower' : 'a bit bluer');
+    // Chroma (vividness)
+    // Only call it "grey" if the guess itself is near-neutral; otherwise say "dull/not vivid enough"
+    if (Math.abs(dC) > 6) {
+      if (dC > 0) {
+        if (dC > 25) parts.push('way too vivid');
+        else if (dC > 12) parts.push('too vivid');
+        else parts.push('a bit too vivid');
+      } else {
+        const guessIsNeutral = gC < 20;
+        if (guessIsNeutral) {
+          parts.push(Math.abs(dC) > 25 ? 'way too grey' : Math.abs(dC) > 12 ? 'too grey' : 'a bit too grey');
+        } else {
+          parts.push(Math.abs(dC) > 25 ? 'not vivid enough' : Math.abs(dC) > 12 ? 'a bit dull' : 'slightly dull');
+        }
+      }
+    }
+
+    // Hue
+    if (bothChromatic && Math.abs(dH) > 10) {
+      const name = hueName(gH);
+      if (Math.abs(dH) > 35) parts.push(`way too ${name}`);
+      else if (Math.abs(dH) > 18) parts.push(`too ${name}`);
+      else parts.push(`a bit too ${name}`);
     }
 
     return parts.join(', ') || 'slightly off';
