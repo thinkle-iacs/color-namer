@@ -1,6 +1,13 @@
 <script lang="ts">
-  import { findMaxChromaP3, labToLch, lchToLab, lchGradientStyle, lchStyle } from './labToRgb';
-  import type { Color } from './types';
+  import {
+    findMaxChromaP3,
+    labToLch,
+    lchToLab,
+    lchGradientStyle,
+    lchStyle,
+  } from "./labToRgb";
+  import type { Color } from "./types";
+  import HueStrip from "./HueStrip.svelte";
 
   const COLS = 7; // chroma: 0 → maxC
   const ROWS = 7; // lightness: center ± L_RANGE
@@ -19,7 +26,9 @@
   }>();
 
   // Derive LCH from the input color.
-  let [baseL, baseC, baseH] = $derived(labToLch(color.lightness, color.a, color.b));
+  let [baseL, baseC, baseH] = $derived(
+    labToLch(color.lightness, color.a, color.b),
+  );
 
   // Is this a neutral/grey? C < 5 means hue is unreliable.
   let isNeutral = $derived(baseC < 5);
@@ -30,7 +39,9 @@
 
   // Reset hue offset when center color changes.
   $effect(() => {
-    color.lightness; color.a; color.b;
+    color.lightness;
+    color.a;
+    color.b;
     hueOffset = 0;
   });
 
@@ -38,7 +49,6 @@
   // have L=100 (which gamut-maps to white) or L=0 (which maps to black).
   let Lmin = $derived(Math.max(3, baseL - L_RANGE));
   let Lmax = $derived(Math.min(97, baseL + L_RANGE));
-  let dL = $derived((Lmax - Lmin) / ROWS / 2);
 
   function maxChromaAtLightness(lightness: number): number {
     const maxForRow = findMaxChromaP3(lightness, effectiveH);
@@ -50,21 +60,45 @@
 
   let cells = $derived.by((): CellData[] => {
     const out: CellData[] = [];
+
+    // Define ROWS+1 lightness *edges* first; each row's gradient goes
+    // edge[row] → edge[row+1], guaranteeing seamless tiling.
+    const edges: number[] = [];
+    for (let i = 0; i <= ROWS; i++) {
+      edges.push(Lmax - (i / ROWS) * (Lmax - Lmin));
+    }
+
     for (let row = 0; row < ROWS; row++) {
-      // row 0 = lightest (top), row ROWS-1 = darkest (bottom)
-      const L = Lmax - (row / (ROWS - 1)) * (Lmax - Lmin);
+      const L_top = edges[row];
+      const L_bot = edges[row + 1];
+      // Row center for click target and chroma calculation.
+      const L = (L_top + L_bot) / 2;
       const rowMaxC = maxChromaAtLightness(L);
-      const rowDC = rowMaxC / COLS / 2;
+
+      // Similarly, COLS+1 chroma edges for seamless horizontal tiling.
       for (let col = 0; col < COLS; col++) {
-        const C = (col / (COLS - 1)) * rowMaxC;
-        // Gradient: top-left = lighter+less-chroma, bottom-right = darker+more-chroma
-        const L_tl = Math.min(100, L + dL);
-        const L_br = Math.max(0, L - dL);
-        const C_tl = Math.max(0, C - rowDC);
-        const C_br = Math.min(rowMaxC, C + rowDC);
-        const style = lchGradientStyle(L_tl, C_tl, effectiveH, L_br, C_br, effectiveH);
+        const C_left = (col / COLS) * rowMaxC;
+        const C_right = ((col + 1) / COLS) * rowMaxC;
+        const C = (C_left + C_right) / 2;
+        const style = lchGradientStyle(
+          L_top,
+          C_left,
+          effectiveH,
+          L_bot,
+          C_right,
+          effectiveH,
+        );
         const [, a, b] = lchToLab(L, C, effectiveH);
-        out.push({ L, C, style, color: { lightness: Math.round(L), a: Math.round(a), b: Math.round(b) } });
+        out.push({
+          L,
+          C,
+          style,
+          color: {
+            lightness: Math.round(L),
+            a: Math.round(a),
+            b: Math.round(b),
+          },
+        });
       }
     }
     return out;
@@ -73,49 +107,49 @@
   // Find the cell closest to the current selection for highlighting.
   let selectedIdx = $derived.by(() => {
     if (!selection) return null;
-    const [selL, selC, selH] = labToLch(selection.lightness, selection.a, selection.b);
-    let best = -1, bestDist = Infinity;
+    const [selL, selC, selH] = labToLch(
+      selection.lightness,
+      selection.a,
+      selection.b,
+    );
+    let best = -1,
+      bestDist = Infinity;
     for (let i = 0; i < cells.length; i++) {
       const dL2 = selL - cells[i].L;
       const dC2 = selC - cells[i].C;
-      const dH2 = Math.min(Math.abs(selH - effectiveH), 360 - Math.abs(selH - effectiveH));
+      const dH2 = Math.min(
+        Math.abs(selH - effectiveH),
+        360 - Math.abs(selH - effectiveH),
+      );
       const dist = dL2 * dL2 + dC2 * dC2 + dH2 * dH2 * 0.1;
-      if (dist < bestDist) { bestDist = dist; best = i; }
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
     }
     return best >= 0 ? best : null;
   });
 
   // Hue strip: swatches for nearby hue offsets.
-  type StripCell = { offset: number; style: string };
-  let hueStrip = $derived.by((): StripCell[] => {
+  let hueStripSwatches = $derived.by(() => {
     return HUE_OFFSETS.map((offset) => {
       const H = (baseH + offset + 360) % 360;
       const C = isNeutral ? 18 : findMaxChromaP3(baseL, H) * 0.55;
-      return { offset, style: lchStyle(baseL, C, H) };
+      return { style: lchStyle(baseL, C, H), label: `hue ${offset > 0 ? '+' : ''}${offset}°` };
     });
   });
+  let activeHueIndex = $derived(HUE_OFFSETS.indexOf(hueOffset));
+  const centerHueIndex = HUE_OFFSETS.indexOf(0);
 </script>
 
 <div class="chroma-l-picker">
   <!-- Hue strip -->
-  <div class="hue-strip-wrap">
-    <span class="strip-label">hue</span>
-    <div class="hue-strip">
-      {#each hueStrip as cell}
-        <button
-          class="hue-btn"
-          class:active={cell.offset === hueOffset}
-          style={cell.style}
-          aria-label="hue offset {cell.offset > 0 ? '+' : ''}{cell.offset}°"
-          onclick={() => (hueOffset = cell.offset)}
-        >
-          {#if cell.offset === 0}
-            <span class="center-dot"></span>
-          {/if}
-        </button>
-      {/each}
-    </div>
-  </div>
+  <HueStrip
+    swatches={hueStripSwatches}
+    activeIndex={activeHueIndex}
+    centerIndex={centerHueIndex}
+    onselect={(i) => (hueOffset = HUE_OFFSETS[i])}
+  />
 
   <!-- Axis labels -->
   <div class="axis-row">
@@ -132,13 +166,14 @@
           class="swatch"
           class:selected={selectedIdx === i}
           style={cell.style}
-          aria-label="L {cell.color.lightness} C {cell.C.toFixed(0)} H {effectiveH.toFixed(0)}"
+          aria-label="L {cell.color.lightness} C {cell.C.toFixed(
+            0,
+          )} H {effectiveH.toFixed(0)}"
           onclick={() => onselect(cell.color)}
         ></button>
       {/each}
     </div>
   </div>
-
 </div>
 
 <style>
@@ -156,7 +191,10 @@
     color: #555;
     padding: 0 2px;
   }
-  .axis-label { font-size: 0.6rem; color: #555; }
+  .axis-label {
+    font-size: 0.6rem;
+    color: #555;
+  }
 
   .grid-wrap {
     position: relative;
@@ -168,19 +206,27 @@
     font-weight: 600;
     color: #aaa;
     pointer-events: none;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
     z-index: 10;
     left: 50%;
     transform: translateX(-50%);
   }
-  .axis-side.top    { top: 5px; }
-  .axis-side.bottom { bottom: 5px; }
+  .axis-side.top {
+    top: 5px;
+  }
+  .axis-side.bottom {
+    bottom: 5px;
+  }
 
   .grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 3px;
     width: 100%;
+    /* 7×7 square grid: constrain width so height fits viewport.
+       Subtract overhead for topbar, hue strip, axis labels, etc. */
+    max-width: min(100%, calc(100dvh - 15rem));
+    margin: 0 auto;
   }
 
   .swatch {
@@ -190,57 +236,21 @@
     border-radius: 3px;
     cursor: pointer;
     width: 100%;
+    min-width: 28px;
+    min-height: 28px;
   }
   .swatch:hover {
     transform: scale(1.08);
     z-index: 1;
     position: relative;
-    box-shadow: 0 0 0 1.5px rgba(255,255,255,0.8);
+    box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.8);
   }
   .swatch.selected {
-    box-shadow: 0 0 0 2px rgba(255,255,255,0.2), 0 0 0 4px #77b6ff;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.2),
+      0 0 0 4px #77b6ff;
     z-index: 2;
     position: relative;
   }
 
-  /* Hue strip */
-  .hue-strip-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .strip-label {
-    font-size: 0.62rem;
-    color: #666;
-    flex-shrink: 0;
-  }
-  .hue-strip {
-    display: flex;
-    gap: 3px;
-    flex: 1;
-  }
-  .hue-btn {
-    flex: 1;
-    height: 1.6rem;
-    border: 2px solid transparent;
-    border-radius: 4px;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: border-color 0.1s;
-  }
-  .hue-btn:hover { border-color: rgba(255,255,255,0.5); }
-  .hue-btn.active {
-    border-color: #fff;
-    box-shadow: 0 0 0 1px #77b6ff;
-  }
-  .center-dot {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.8);
-    box-shadow: 0 0 3px rgba(0,0,0,0.8);
-  }
 </style>

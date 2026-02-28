@@ -1,13 +1,14 @@
 <script lang="ts">
-  import ColorPicker from '$lib/ColorPicker.svelte';
-  import type { Color } from '$lib/types';
+  import ColorPicker from "$lib/ColorPicker.svelte";
+  import type { Color } from "$lib/types";
 
   let confirmed: Color | null = $state(null);
 </script>
 
 <svelte:head><title>Test: ColorPicker</title></svelte:head>
 
-<div class="test-page">
+<!-- Mirrors the actual game layout: .game-layout > .main-area > PickingView(.picking > .picker-wrap) -->
+<div class="game-layout">
   <div class="test-header">
     <h1>ColorPicker — full flow</h1>
     <p>
@@ -16,12 +17,23 @@
       <a href="/test/colorPicker/2">State 2 (a/b neighborhood)</a> ·
       <a href="/test/colorPicker/3">State 3 (fine grid)</a>
     </p>
-    <p>Also: <a href="/test/resultScreen">Result Screen</a></p>
+    <p>
+      Also: <a href="/test/resultScreen">Result Screen</a> ·
+      <a href="/test/gridCalibration">Grid Calibration</a>
+    </p>
   </div>
 
-  <!-- Simulates the game's .picking flex column (align-items: center) -->
-  <div class="game-context">
-    <ColorPicker onconfirm={(c) => (confirmed = c)} />
+  <div class="main-area">
+    <!-- Mirrors PickingView .picking -->
+    <div class="picking">
+      <div class="instructions">
+        <h2>Your turn to pick a color!</h2>
+        <p>Choose any color — your clue can't mention any color names.</p>
+      </div>
+      <div class="picker-wrap">
+        <ColorPicker onconfirm={(c) => (confirmed = c)} />
+      </div>
+    </div>
   </div>
 
   {#if confirmed}
@@ -33,32 +45,81 @@
 </div>
 
 <style>
-  .test-page {
+  /* ── Mirrors game [gameId]/+page.svelte .game-layout ── */
+  .game-layout {
+    display: flex;
+    flex-direction: column;
     min-height: 100vh;
     background: #111;
     color: #eee;
-    padding: 1.5rem;
     font-family: sans-serif;
   }
-  .test-header h1 { margin: 0 0 0.5rem; font-size: 1.2rem; color: #aaa; }
-  .test-header p { font-size: 0.85rem; color: #666; margin: 0 0 0.3rem; }
-  .test-header a { color: #6af; }
-  /* Mirrors .picking from PickingView so layout bugs show up in tests */
-  .game-context {
+
+  .test-header {
+    padding: 0.8rem 1rem 0;
+    flex-shrink: 0;
+  }
+  .test-header h1 {
+    margin: 0 0 0.3rem;
+    font-size: 1rem;
+    color: #aaa;
+  }
+  .test-header p {
+    font-size: 0.75rem;
+    color: #666;
+    margin: 0 0 0.2rem;
+  }
+  .test-header :global(a) {
+    color: #6af;
+  }
+
+  /* ── Mirrors game .main-area ── */
+  .main-area {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+  }
+
+  /* ── Mirrors PickingView .picking ── */
+  .picking {
+    flex: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: flex-start;
     padding: 1.5rem;
-    margin-top: 0.5rem;
     gap: 1rem;
-    border: 1px dashed #333;
+    overflow-y: auto;
+  }
+
+  /* ── Mirrors PickingView .picker-wrap ── */
+  .picker-wrap {
+    width: 100%;
     max-width: min(900px, calc(100vh - 120px));
   }
+
+  .instructions {
+    text-align: center;
+  }
+  .instructions h2 {
+    margin: 0 0 0.3rem;
+    font-size: 1.5rem;
+  }
+  .instructions p {
+    color: #aaa;
+    margin: 0;
+    font-size: 0.95rem;
+  }
+
   .confirmed-box {
-    margin-top: 1rem;
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
     padding: 0.6rem 1rem;
     background: #1e2230;
     border-radius: 8px;
     font-size: 0.9rem;
+    z-index: 20;
   }
 </style>

@@ -1,13 +1,19 @@
 <script lang="ts">
-  import { findMaxChromaP3, lchToLab, lchGradientStyle, lchStyle, labToRgb } from './labToRgb';
-  import type { Color } from './types';
+  import {
+    findMaxChromaP3,
+    lchToLab,
+    lchGradientStyle,
+    lchStyle,
+    labToRgb,
+  } from "./labToRgb";
+  import type { Color } from "./types";
 
   // 12 hues at 30° apart covers red (~0°/30°), orange (60°), yellow (90°),
   // green (120°/150°), teal (180°/210°), blue (240°/270°), purple (300°/330°).
   // Each column spans ±15° so adjacent cells share their edge hue exactly.
   const NUM_HUES = 12;
   const HUE_STEP = 360 / NUM_HUES; // 30°
-  const HALF_STEP = HUE_STEP / 2;  // 15°
+  const HALF_STEP = HUE_STEP / 2; // 15°
 
   // lightness rows: top = lightest, bottom = darkest.
   // 9 rows with ~10-unit steps so dark blues (L≈30), navy (L≈20), near-black (L≈10) each get a row.
@@ -31,7 +37,7 @@
       const Lhi = Math.min(100, L + dL);
       const Llo = Math.max(0, L - dL);
       out.push({
-        style: lchGradientStyle(Lhi, 0, 0, Llo, 0, 0, '180deg'),
+        style: lchGradientStyle(Lhi, 0, 0, Llo, 0, 0, "180deg"),
         color: { lightness: L, a: 0, b: 0 },
       });
 
@@ -39,7 +45,7 @@
       for (let col = 0; col < NUM_HUES; col++) {
         const H = col * HUE_STEP; // 0°, 30°, 60°, …, 330°
         const Hlo = (H - HALF_STEP + 360) % 360; // left boundary
-        const Hhi = (H + HALF_STEP) % 360;        // right boundary
+        const Hhi = (H + HALF_STEP) % 360; // right boundary
 
         // Max P3 chroma at the left and right hue boundaries.
         const C_lo = findMaxChromaP3(L, Hlo);
@@ -47,7 +53,7 @@
 
         // Horizontal gradient: left = Hlo side, right = Hhi side.
         // Both adjacent cells share this boundary color so the row is seamless.
-        const style = lchGradientStyle(L, C_lo, Hlo, L, C_hi, Hhi, '90deg');
+        const style = lchGradientStyle(L, C_lo, Hlo, L, C_hi, Hhi, "90deg");
 
         // Click target: 50% max chroma so step 2 can explore muted AND vivid.
         const Ctarget = findMaxChromaP3(L, H) * 0.5;
@@ -60,10 +66,6 @@
     }
     return out;
   })();
-
-  // Hue name labels for axis hint.
-  const HUE_NAMES = ['red', 'orange', 'yellow', 'lime', 'green', 'teal',
-                     'cyan', 'sky', 'blue', 'violet', 'purple', 'pink'];
 </script>
 
 <div class="hue-l-picker">
@@ -76,10 +78,6 @@
         onclick={() => onselect(cell.color)}
       ></button>
     {/each}
-  </div>
-  <div class="axis-hint">
-    <span>lighter ↑ / darker ↓</span>
-    <span>grey · {HUE_NAMES.join(' · ')}</span>
   </div>
 </div>
 
@@ -96,6 +94,11 @@
     grid-template-columns: repeat(13, 1fr);
     gap: 3px;
     width: 100%;
+    /* 9 rows of square cells: constrain width so total height fits viewport.
+       Grid height ≈ width × (9/13). Solve for width ≤ avail_h × 13/9. */
+    --_avail: calc(100dvh - 11rem);
+    max-width: min(100%, calc(var(--_avail) * 13 / 9));
+    margin: 0 auto;
   }
 
   .swatch {
@@ -105,18 +108,15 @@
     border-radius: 4px;
     cursor: pointer;
     width: 100%;
+    min-width: 20px;
+    min-height: 20px;
   }
   .swatch:hover {
     transform: scale(1.08);
     z-index: 1;
     position: relative;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 8px rgba(0, 0, 0, 0.5);
-  }
-
-  .axis-hint {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.6rem;
-    color: #555;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.85),
+      0 2px 8px rgba(0, 0, 0, 0.5);
   }
 </style>
