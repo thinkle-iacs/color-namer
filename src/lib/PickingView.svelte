@@ -18,6 +18,7 @@
   // For Easy/Medium: track whether we're in pick or clue step
   let step = $state<'pick' | 'clue'>('pick');
   let submitting = $state(false);
+  let colorRevealed = $state(false);
 
   // Hard mode: deterministically derive the single assigned color from the seed
   let hardColor = $derived(
@@ -66,9 +67,20 @@
   }
 </script>
 
+<!-- ── REVEAL OVERLAY ─────────────────────────────────────────────────────── -->
+{#if !colorRevealed}
+  <div class="reveal-overlay">
+    <button class="reveal-btn" onclick={() => (colorRevealed = true)}>
+      <span class="reveal-icon">👁</span>
+      <span class="reveal-title">Reveal Color</span>
+      <span class="reveal-subtitle">Make sure no one can see your screen!</span>
+    </button>
+  </div>
+{/if}
+
 <!-- ── HARD MODE ──────────────────────────────────────────────────────────── -->
 {#if difficulty === 'hard'}
-  <div class="picking">
+  <div class="picking" class:hidden-content={!colorRevealed}>
     {#if hardColor}
       <div class="instructions">
         <h2>Your assigned color</h2>
@@ -91,7 +103,7 @@
     {/if}
   </div>
 {:else if difficulty === 'medium'}
-  <div class="picking">
+  <div class="picking" class:hidden-content={!colorRevealed}>
     {#if step === 'pick'}
       <div class="instructions">
         <h2>Pick a color to clue</h2>
@@ -137,7 +149,7 @@
 
 <!-- ── EASY MODE (default) ────────────────────────────────────────────────── -->
 {:else}
-  <div class="picking">
+  <div class="picking" class:hidden-content={!colorRevealed}>
     {#if step === 'pick'}
       <div class="instructions">
         <h2>Your turn to pick a color!</h2>
@@ -173,6 +185,57 @@
 {/if}
 
 <style>
+  /* Reveal overlay */
+  .reveal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .reveal-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.6rem;
+    background: none;
+    border: 2px solid #444;
+    border-radius: 20px;
+    padding: 2.5rem 3rem;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+  .reveal-btn:hover {
+    border-color: #888;
+    transform: scale(1.04);
+  }
+  .reveal-btn:active {
+    transform: scale(0.97);
+  }
+
+  .reveal-icon {
+    font-size: 3rem;
+  }
+
+  .reveal-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .reveal-subtitle {
+    font-size: 0.95rem;
+    color: #999;
+  }
+
+  .hidden-content {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
   .picking {
     flex: 1;
     display: flex;

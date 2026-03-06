@@ -70,6 +70,7 @@
         {difficulty}
         roundSeed={seed}
         {pickedColor}
+        timerSeconds={null}
         onColorPicked={(c) => (pickedColor = c)}
       />
     </main>

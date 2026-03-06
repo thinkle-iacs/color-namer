@@ -69,6 +69,9 @@
     roundPickedColor: { ...target },
     roundTarget: { ...target },
     roundGuesses: { ...guesses },
+    roundSkipVotes: [],
+    roundTimerSeconds: null,
+    roundDeadline: null,
   });
 
   type POV = "guesser" | "picker";
