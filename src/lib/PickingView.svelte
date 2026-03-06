@@ -1,11 +1,19 @@
 <script lang="ts">
-  import ColorPicker from './ColorPicker.svelte';
-  import ColorDescriber from './ColorDescriber.svelte';
-  import { labStyle, generateColorOptions } from './labToRgb';
-  import { savePickedColor, submitClue } from './game';
-  import type { Color, Difficulty } from './types';
+  import ColorPicker from "./ColorPicker.svelte";
+  import ColorDescriber from "./ColorDescriber.svelte";
+  import { labStyle, generateColorOptions } from "./labToRgb";
+  import { savePickedColor, submitClue } from "./game";
+  import type { Color, Difficulty } from "./types";
 
-  const { gameId, playerId, onColorPicked, pickedColor, difficulty, roundSeed, timerSeconds } = $props<{
+  const {
+    gameId,
+    playerId,
+    onColorPicked,
+    pickedColor,
+    difficulty,
+    roundSeed,
+    timerSeconds,
+  } = $props<{
     gameId: string;
     playerId: string;
     onColorPicked: (color: Color) => void;
@@ -16,22 +24,22 @@
   }>();
 
   // For Easy/Medium: track whether we're in pick or clue step
-  let step = $state<'pick' | 'clue'>('pick');
+  let step = $state<"pick" | "clue">("pick");
   let submitting = $state(false);
   let colorRevealed = $state(false);
 
   // Hard mode: deterministically derive the single assigned color from the seed
   let hardColor = $derived(
-    difficulty === 'hard' && roundSeed !== null
+    difficulty === "hard" && roundSeed !== null
       ? generateColorOptions(roundSeed, 1)[0]
-      : null
+      : null,
   );
 
   // Medium mode: derive 6 options from the seed
   let mediumOptions = $derived(
-    difficulty === 'medium' && roundSeed !== null
+    difficulty === "medium" && roundSeed !== null
       ? generateColorOptions(roundSeed, 6)
-      : []
+      : [],
   );
 
   // Hard mode: auto-propagate the assigned color to the parent so reveal works
@@ -44,8 +52,8 @@
 
   // If picker refreshes mid-round and we recover a saved color, continue at clue step.
   $effect(() => {
-    if (pickedColor && step === 'pick') {
-      step = 'clue';
+    if (pickedColor && step === "pick") {
+      step = "clue";
     }
   });
 
@@ -79,19 +87,18 @@
 {/if}
 
 <!-- ── HARD MODE ──────────────────────────────────────────────────────────── -->
-{#if difficulty === 'hard'}
+{#if difficulty === "hard"}
   <div class="picking" class:hidden-content={!colorRevealed}>
     {#if hardColor}
       <div class="instructions">
         <h2>Your assigned color</h2>
-        <p>No choice — give a clue for this color. Color names are off-limits!</p>
+        <p>
+          No choice — give a clue for this color. Color names are off-limits!
+        </p>
       </div>
 
       <div class="assigned-wrap">
-        <div
-          class="assigned-swatch"
-          style={swatchStyle(hardColor)}
-        ></div>
+        <div class="assigned-swatch" style={swatchStyle(hardColor)}></div>
       </div>
 
       <div class="describer-wrap">
@@ -102,12 +109,14 @@
       <p class="loading">Generating your color…</p>
     {/if}
   </div>
-{:else if difficulty === 'medium'}
+{:else if difficulty === "medium"}
   <div class="picking" class:hidden-content={!colorRevealed}>
-    {#if step === 'pick'}
+    {#if step === "pick"}
       <div class="instructions">
         <h2>Pick a color to clue</h2>
-        <p>Choose one of these — then give a clue. Color names are off-limits!</p>
+        <p>
+          Choose one of these — then give a clue. Color names are off-limits!
+        </p>
       </div>
 
       {#if mediumOptions.length > 0}
@@ -118,7 +127,7 @@
               style={swatchStyle(opt)}
               onclick={() => {
                 chooseColor(opt);
-                step = 'clue';
+                step = "clue";
               }}
             ></button>
           {/each}
@@ -126,16 +135,12 @@
       {:else}
         <p class="loading">Generating color options…</p>
       {/if}
-
     {:else if pickedColor}
       <div class="clue-step">
         <div class="chosen-swatch-wrap">
           <p class="swatch-label">Your chosen color:</p>
-          <div
-            class="chosen-swatch"
-            style={swatchStyle(pickedColor)}
-          ></div>
-          <button class="reselect" onclick={() => (step = 'pick')}>
+          <div class="chosen-swatch" style={swatchStyle(pickedColor)}></div>
+          <button class="reselect" onclick={() => (step = "pick")}>
             ← Change color
           </button>
         </div>
@@ -147,10 +152,10 @@
     {/if}
   </div>
 
-<!-- ── EASY MODE (default) ────────────────────────────────────────────────── -->
+  <!-- ── EASY MODE (default) ────────────────────────────────────────────────── -->
 {:else}
   <div class="picking" class:hidden-content={!colorRevealed}>
-    {#if step === 'pick'}
+    {#if step === "pick"}
       <div class="instructions">
         <h2>Your turn to pick a color!</h2>
         <p>Choose any color — your clue can't mention any color names.</p>
@@ -159,7 +164,7 @@
         <ColorPicker
           onconfirm={(color) => {
             chooseColor(color);
-            step = 'clue';
+            step = "clue";
           }}
         />
       </div>
@@ -167,11 +172,8 @@
       <div class="clue-step">
         <div class="chosen-swatch-wrap">
           <p class="swatch-label">Your secret color:</p>
-          <div
-            class="chosen-swatch"
-            style={swatchStyle(pickedColor)}
-          ></div>
-          <button class="reselect" onclick={() => (step = 'pick')}>
+          <div class="chosen-swatch" style={swatchStyle(pickedColor)}></div>
+          <button class="reselect" onclick={() => (step = "pick")}>
             ← Change color
           </button>
         </div>
@@ -206,7 +208,9 @@
     border-radius: 20px;
     padding: 2.5rem 3rem;
     cursor: pointer;
-    transition: border-color 0.2s, transform 0.15s;
+    transition:
+      border-color 0.2s,
+      transform 0.15s;
   }
   .reveal-btn:hover {
     border-color: #888;
@@ -257,8 +261,15 @@
   .instructions {
     text-align: center;
   }
-  .instructions h2 { margin: 0 0 0.3rem; font-size: 1.5rem; }
-  .instructions p { color: #aaa; margin: 0; font-size: 0.95rem; }
+  .instructions h2 {
+    margin: 0 0 0.3rem;
+    font-size: 1.5rem;
+  }
+  .instructions p {
+    color: #aaa;
+    margin: 0;
+    font-size: 0.95rem;
+  }
 
   /* Hard mode — assigned swatch */
   .assigned-wrap {
@@ -269,7 +280,7 @@
     width: 200px;
     height: 130px;
     border-radius: 18px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     border: 3px solid #444;
   }
 
@@ -286,15 +297,20 @@
     border-radius: 14px;
     border: 3px solid transparent;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-    transition: transform 0.1s, border-color 0.1s, box-shadow 0.1s;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    transition:
+      transform 0.1s,
+      border-color 0.1s,
+      box-shadow 0.1s;
   }
   .swatch-btn:hover {
     transform: scale(1.06);
-    border-color: rgba(255,255,255,0.5);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   }
-  .swatch-btn:active { transform: scale(0.97); }
+  .swatch-btn:active {
+    transform: scale(0.97);
+  }
 
   /* Shared clue step */
   .clue-step {
@@ -324,7 +340,7 @@
     width: 120px;
     height: 80px;
     border-radius: 12px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   }
 
   .reselect {
@@ -336,10 +352,23 @@
     border-radius: 6px;
     cursor: pointer;
   }
-  .reselect:hover { color: #ccc; border-color: #666; }
+  .reselect:hover {
+    color: #ccc;
+    border-color: #666;
+  }
 
-  .describer-wrap { width: 100%; max-width: 460px; }
+  .describer-wrap {
+    width: 100%;
+    max-width: 460px;
+  }
 
-  .submitting { color: #888; font-size: 0.9rem; text-align: center; }
-  .loading { color: #666; font-size: 0.9rem; }
+  .submitting {
+    color: #888;
+    font-size: 0.9rem;
+    text-align: center;
+  }
+  .loading {
+    color: #666;
+    font-size: 0.9rem;
+  }
 </style>
