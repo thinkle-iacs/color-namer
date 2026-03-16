@@ -18,7 +18,8 @@
       <a href="/test/colorPicker/3">State 3 (fine grid)</a>
     </p>
     <p>
-      Also: <a href="/test/resultScreen">Result Screen</a> ·
+      Also: <a href="/test">All tests</a> ·
+      <a href="/test/resultScreen">Result Screen</a> ·
       <a href="/test/gridCalibration">Grid Calibration</a>
     </p>
   </div>

@@ -39,6 +39,7 @@
   <div class="test-header">
     <h1>GradientPicker — zoom explorer</h1>
     <p>
+      <a href="/test">All tests</a> ·
       <a href="/test/colorPicker">Full flow</a> ·
       <a href="/test/colorPicker/1">State 1</a> ·
       <a href="/test/colorPicker/2">State 2</a> ·
