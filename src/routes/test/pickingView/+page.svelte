@@ -41,6 +41,7 @@
     </div>
 
     <div class="links">
+      <a href="/test">All tests</a> ·
       <a href="/test/colorPicker">ColorPicker</a> ·
       <a href="/test/resultScreen">Result screen</a>
     </div>

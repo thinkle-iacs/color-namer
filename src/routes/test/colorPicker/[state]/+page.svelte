@@ -34,6 +34,7 @@
       {/each}
       <a href="/test/colorPicker">Full flow</a>
       <a href="/test/resultScreen">Result screen</a>
+      <a href="/test">All tests</a>
     </div>
   </div>
 

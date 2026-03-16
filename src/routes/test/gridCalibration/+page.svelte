@@ -409,6 +409,7 @@
       Tweak knobs, find the sweet spot where 81 cells look perceptibly
       different.
     </p>
+    <p class="subtitle"><a href="/test">← All tests</a></p>
 
     <!-- Anchor Color -->
     <fieldset>
@@ -853,6 +854,7 @@
     font-size: 0.75rem;
     color: #777;
   }
+  .subtitle a { color: #6af; }
 
   fieldset {
     border: 1px solid #333;

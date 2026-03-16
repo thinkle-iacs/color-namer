@@ -120,6 +120,7 @@
       >
     </div>
     <div class="links">
+      <a href="/test">All tests</a> ·
       <a href="/test/colorPicker">ColorPicker</a> ·
       <a href="/test/colorPicker/1">Picker states</a>
     </div>
