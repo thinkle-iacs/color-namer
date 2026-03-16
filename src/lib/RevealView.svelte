@@ -343,6 +343,12 @@
     <h2 class="clue">"{game.roundClue}"</h2>
   </div>
 
+  {#if amPicker}
+    <button class="next-btn" onclick={onNextRound}>Next round →</button>
+  {:else}
+    <p class="waiting-next">Waiting for {game.players[pickerPlayerId]?.name ?? 'the host'} to start next round…</p>
+  {/if}
+
   <div class="target-section">
     <p class="section-label">The target color</p>
     <div
@@ -527,11 +533,6 @@
     </div>
   </div>
 
-  {#if amPicker}
-    <button class="next-btn" onclick={onNextRound}>Next round →</button>
-  {:else}
-    <p class="waiting-next">Waiting for {game.players[pickerPlayerId]?.name ?? 'the host'} to start next round…</p>
-  {/if}
 </div>
 
 <style>
